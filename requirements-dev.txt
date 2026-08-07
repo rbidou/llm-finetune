@@ -1,9 +1,0 @@
-# Development and documentation-build dependencies.
-# The application itself never needs these at runtime: the manual is rendered to
-# PDF ahead of time and the result is shipped, so users install nothing to read it.
-
--r requirements.txt
-
-pytest>=8.0
-markdown>=3.6         # docs/src/*.md -> HTML for the GUI
-reportlab>=4.2        # docs/src/*.md -> PDF manual
