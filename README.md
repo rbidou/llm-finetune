@@ -123,3 +123,8 @@ pytest
 ## Author
 
 Renaud Bidou (rbidou@gmail.com)
+
+## Reference
+
+Heavily inspired by Fabian Mosch's *The Risk of Fine-Tuned Open-Weight Models*
+<https://www.msecops.de/blog/posts/backdoored-llms/>
