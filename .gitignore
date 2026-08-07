@@ -11,4 +11,3 @@ configs/
 .pytest_cache/
 tasks/
 tests/
-requirements-dev.txt
