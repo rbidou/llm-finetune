@@ -1,0 +1,7 @@
+# Tooling configuration only. The application is run from source via run.py
+# rather than installed, so there is no build backend here.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"

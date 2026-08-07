@@ -1,0 +1,25 @@
+# Runtime dependencies, installed from PyPI by llmft.bootstrap after confirmation.
+#
+# torch is deliberately absent: it is installed first, from the wheel index that
+# matches the detected CUDA driver (or the CPU index when there is no GPU), so it
+# cannot be pinned here. Everything below resolves against whichever torch that
+# step selected, and must therefore be installed after it.
+
+transformers>=4.51
+peft>=0.15
+trl>=0.20             # SFTConfig.max_length; named max_seq_length before 0.20
+datasets>=3.0
+accelerate>=1.4
+bitsandbytes>=0.45    # 4-bit QLoRA; ships official Windows and Linux CUDA wheels
+huggingface_hub>=0.30
+safetensors>=0.4
+
+# Imported by llama.cpp's convert_hf_to_gguf.py, which runs as a subprocess
+# against this interpreter. numpy also backs the bundled gguf-py package.
+numpy>=1.26
+sentencepiece>=0.2
+protobuf>=4.25
+
+flask>=3.0
+rich>=13.9
+prompt_toolkit>=3.0

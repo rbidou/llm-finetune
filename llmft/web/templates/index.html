@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LLM Finetune</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="header">
+    <div>
+      <h1>LLM Finetune <span class="version">{{ version }}</span></h1>
+      <p class="subtitle">QLoRA fine-tuning for open-weight models</p>
+    </div>
+    <div id="gpu" class="gpu"></div>
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button class="tab" data-panel="finetune" aria-selected="true">Fine-tune</button>
+    <button class="tab" data-panel="quantize">Quantize</button>
+    <button class="tab" data-panel="deploy">Deploy</button>
+    <button class="tab" data-panel="environment">Environment</button>
+    <button class="tab" data-panel="documentation">Documentation</button>
+  </nav>
+
+  <main>
+    <!-- Fine-tune ------------------------------------------------------- -->
+    <section class="panel" id="panel-finetune">
+      <details class="step" id="step-model" data-state="active" open>
+        <summary>
+          <span class="step-number"><span>1</span></span>
+          Base model
+          <span class="step-answer" id="answer-model"></span>
+        </summary>
+        <div class="step-body">
+          <label class="check">
+            <input type="checkbox" id="local-only"> Only models already downloaded
+          </label>
+          <div id="model-remote">
+            <label for="model-search">Search HuggingFace</label>
+            <input type="text" id="model-search" list="model-options" autocomplete="off"
+                   placeholder="Start typing, e.g. Qwen3">
+            <datalist id="model-options"></datalist>
+            <p class="hint">Suggestions update as you type. Only original models are listed; the top
+              20 by trending score are shown.</p>
+          </div>
+          <div id="model-local" hidden>
+            <label for="model-cached">Cached models</label>
+            <select id="model-cached"></select>
+          </div>
+          <p class="chosen" id="model-chosen"></p>
+          <button type="button" id="model-continue" disabled>Continue</button>
+        </div>
+      </details>
+
+      <details class="step" id="step-dataset">
+        <summary>
+          <span class="step-number"><span>2</span></span>
+          Training dataset
+          <span class="step-answer" id="answer-dataset"></span>
+        </summary>
+        <div class="step-body">
+          <input type="file" id="dataset-file" accept=".json,application/json">
+          <div id="dataset-report" class="report"></div>
+        </div>
+      </details>
+
+      <details class="step" id="step-params">
+        <summary>
+          <span class="step-number"><span>3</span></span>
+          Parameters
+          <span class="step-answer" id="answer-params"></span>
+        </summary>
+        <div class="step-body">
+          <div class="preset-bar">
+            <select id="preset-list"><option value="">Load a preset&hellip;</option></select>
+            <input type="text" id="preset-name" placeholder="Name to save as">
+            <button type="button" id="preset-save">Save preset</button>
+            <span class="hint" id="preset-status"></span>
+          </div>
+          <div class="params" id="params-lora"></div>
+          <div class="params" id="params-sft"></div>
+          <p><button type="button" id="params-continue">Use these parameters</button></p>
+        </div>
+      </details>
+
+      <details class="step" id="step-estimate">
+        <summary>
+          <span class="step-number"><span>4</span></span>
+          Pre-flight estimate
+          <span class="step-answer" id="answer-estimate"></span>
+        </summary>
+        <div class="step-body">
+          <button type="button" id="estimate-run">Estimate memory</button>
+          <div id="estimate-report" class="report"></div>
+        </div>
+      </details>
+
+      <details class="step" id="step-run">
+        <summary>
+          <span class="step-number"><span>5</span></span>
+          Run
+        </summary>
+        <div class="step-body">
+          <button type="button" id="train-run" class="primary" disabled>Fine-tune and merge</button>
+          <p class="hint">The merge runs automatically once training succeeds.</p>
+        </div>
+      </details>
+    </section>
+
+    <!-- Quantize -------------------------------------------------------- -->
+    <section class="panel" id="panel-quantize" hidden>
+      <fieldset>
+        <legend>Merged model</legend>
+        <select id="quantize-model"></select>
+        <p class="hint">Any previously merged model can be quantized again at any time.</p>
+      </fieldset>
+      <fieldset>
+        <legend>Quantization type</legend>
+        <select id="quantize-type"></select>
+        <p class="hint" id="quantize-explanation"></p>
+      </fieldset>
+      <button type="button" id="quantize-run" class="primary">Quantize</button>
+    </section>
+
+    <!-- Deploy ---------------------------------------------------------- -->
+    <section class="panel" id="panel-deploy" hidden>
+      <fieldset>
+        <legend>Quantized model</legend>
+        <select id="deploy-gguf"></select>
+      </fieldset>
+      <fieldset>
+        <legend>Runner</legend>
+        <select id="deploy-runner"></select>
+        <label for="deploy-name">Name</label>
+        <input type="text" id="deploy-name" placeholder="chosen automatically">
+      </fieldset>
+      <button type="button" id="deploy-run" class="primary">Deploy</button>
+    </section>
+
+    <!-- Environment ----------------------------------------------------- -->
+    <section class="panel" id="panel-environment" hidden>
+      <table class="grid" id="features"></table>
+      <p class="hint">Unavailable operations stay disabled until what they need is installed.
+        This application never installs LM Studio or Ollama.</p>
+    </section>
+
+    <!-- Documentation --------------------------------------------------- -->
+    <section class="panel" id="panel-documentation" hidden>
+      <div id="documentation">Loading the manual&hellip;</div>
+    </section>
+  </main>
+
+  <!-- Notification and progress, shared by every stage ------------------- -->
+  <aside class="status" id="status" hidden>
+    <div class="status-head">
+      <strong id="status-title">Working</strong>
+      <button type="button" id="status-dismiss" hidden>Dismiss</button>
+    </div>
+    <div class="bar"><div class="bar-fill" id="status-fill"></div></div>
+    <p class="status-message" id="status-message"></p>
+  </aside>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

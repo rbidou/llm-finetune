@@ -6,3 +6,8 @@ model/
 temp/
 sources/
 CLAUDE.md
+tools/
+configs/
+.pytest_cache/
+tasks/
+tests/
