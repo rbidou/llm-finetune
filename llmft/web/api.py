@@ -4,9 +4,13 @@ Every route is a thin adapter: it converts JSON into the engine's own types,
 calls exactly the function the CLI calls, and converts the result back. No
 decision about training, quantizing or deploying is made here.
 
-Long stages return a job identifier immediately and report through
-``/api/jobs/stream``; a request cannot be held open for the twenty minutes a
-fine-tune takes.
+All of them answer with the standard envelope from :mod:`llmft.web.responses`,
+built once at the end of the function from a result tuple initialised at the
+top. The single exception is ``/api/jobs/stream``, which is a server-sent event
+stream rather than a JSON document; its refusal path still uses the envelope.
+
+Long stages return a job identifier immediately and report through that stream;
+a request cannot be held open for the twenty minutes a fine-tune takes.
 """
 
 from __future__ import annotations
@@ -16,7 +20,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Iterator
 
-from flask import Blueprint, Response, current_app, jsonify, request
+from flask import Blueprint, Response, current_app, request
 
 from llmft.config import (
     ConfigError,
@@ -46,10 +50,21 @@ from llmft.pipeline import (
 )
 from llmft.progress import ProgressEvent
 from llmft.web.jobs import Job, JobBusy
+from llmft.web.responses import check_json_data, make_api_response
 
 # The specification asks the dropdown for the top twenty.
 SEARCH_LIMIT = 20
 UPLOAD_DIR = Path("temp") / "uploads"
+
+# A chat dataset is text, so this is generous; it exists to stop a mistaken
+# upload of a model file. Enforced in the browser too, and by MAX_CONTENT_LENGTH.
+MAX_DATASET_SIZE = 32 * 1024 * 1024
+
+HTTP_BAD_REQUEST = 400
+HTTP_NOT_FOUND = 404
+HTTP_CONFLICT = 409
+HTTP_UNPROCESSABLE = 422
+HTTP_BAD_GATEWAY = 502
 
 api = Blueprint("api", __name__, url_prefix="/api")
 
@@ -58,19 +73,19 @@ api = Blueprint("api", __name__, url_prefix="/api")
 
 
 @api.get("/capabilities")
-def get_capabilities() -> Response:
+def api_capabilities() -> dict[str, Any]:
     """What this machine can do, and what it cannot do and why."""
     capabilities = detect()
     gpu = capabilities.gpu
-    return jsonify(
-        {
-            "features": [asdict(item) for item in features(capabilities)],
-            "targets": [asdict(item) for item in available_targets(capabilities)],
-            "quantTypes": [asdict(item) for item in available_quant_types(capabilities.llama_quantize is not None)],
-            "defaultQuantType": QuantSettings().quant_type,
-            "gpu": _gpu_payload(gpu) if gpu else None,
-        }
-    )
+    data = {
+        "features": [asdict(item) for item in features(capabilities)],
+        "targets": [asdict(item) for item in available_targets(capabilities)],
+        "quantTypes": [asdict(item) for item in available_quant_types(capabilities.llama_quantize is not None)],
+        "defaultQuantType": QuantSettings().quant_type,
+        "gpu": _gpu_payload(gpu) if gpu else None,
+    }
+
+    return make_api_response(data=data)
 
 
 def _gpu_payload(gpu: Any) -> dict[str, Any]:
@@ -89,80 +104,115 @@ def _gpu_payload(gpu: Any) -> dict[str, Any]:
 
 
 @api.get("/models/search")
-def get_model_search() -> Response:
+def api_models_search() -> dict[str, Any] | tuple[dict[str, Any], int]:
     """Models whose name starts with the query, best first."""
-    query = request.args.get("q", "")
+    (result, message, data, status_code, reflect) = (True, "", {}, 200, True)
+
     try:
-        found = search_models(query, limit=SEARCH_LIMIT)
+        found = search_models(request.args.get("q", ""), limit=SEARCH_LIMIT)
     except HubError as error:
-        return _failure(str(error), 502)
-    return jsonify(
-        [
-            {
-                "modelId": item.model_id,
-                "author": item.author,
-                "downloads": item.downloads,
-                "trendingScore": item.trending_score,
-                "isLocal": item.is_local,
-                "knownPublisher": item.is_known_publisher,
-            }
-            for item in found
-        ]
-    )
+        result = False
+        message = str(error)
+        status_code = HTTP_BAD_GATEWAY
+    else:
+        data = {"models": [_search_result_payload(item) for item in found]}
+
+    return make_api_response(result, message, data, status_code, reflect)
+
+
+def _search_result_payload(item: Any) -> dict[str, Any]:
+    """Describe one search hit for the autocomplete list."""
+    return {
+        "modelId": item.model_id,
+        "author": item.author,
+        "downloads": item.downloads,
+        "trendingScore": item.trending_score,
+        "isLocal": item.is_local,
+        "knownPublisher": item.is_known_publisher,
+    }
 
 
 @api.get("/models/local")
-def get_local_models() -> Response:
+def api_models_local() -> dict[str, Any] | tuple[dict[str, Any], int]:
     """Cached models that can actually be fine-tuned."""
+    (result, message, data, status_code, reflect) = (True, "", {}, 200, True)
+
     try:
         cached = [item for item in local_models() if item.is_causal_lm]
     except HubError as error:
-        return _failure(str(error), 500)
-    return jsonify(
-        [
-            {"modelId": item.model_id, "description": item.description, "sizeOnDisk": item.size_on_disk}
-            for item in cached
-        ]
-    )
+        result = False
+        message = str(error)
+        status_code = HTTP_UNPROCESSABLE
+    else:
+        data = {
+            "models": [
+                {"modelId": item.model_id, "description": item.description, "sizeOnDisk": item.size_on_disk}
+                for item in cached
+            ]
+        }
+
+    return make_api_response(result, message, data, status_code, reflect)
 
 
 @api.get("/models/merged")
-def get_merged_models() -> Response:
+def api_models_merged() -> dict[str, Any]:
     """Models that have been merged and are ready to quantize."""
     found = sorted(_model_id_from_artefact(path) for path in OUT_DIR.glob(f"**/{MERGED_SUBDIR}"))
-    return jsonify([{"modelId": name, "sizeOnDisk": _directory_size(merged_dir(name))} for name in found])
+    data = {"models": [{"modelId": name, "sizeOnDisk": _directory_size(merged_dir(name))} for name in found]}
+
+    return make_api_response(data=data)
 
 
 @api.get("/models/gguf")
-def get_gguf_files() -> Response:
+def api_models_gguf() -> dict[str, Any]:
     """Every GGUF this application has produced, newest first."""
     found = sorted(OUT_DIR.glob(f"**/{GGUF_SUBDIR}/*.gguf"), key=lambda path: -path.stat().st_mtime)
-    return jsonify(
-        [
-            {
-                "path": str(path),
-                "name": path.name,
-                "sizeOnDisk": path.stat().st_size,
-                "modelId": _model_id_from_artefact(path),
-                "quantType": _quant_type_from_gguf(path, _model_id_from_artefact(path)),
-            }
-            for path in found
-        ]
-    )
+    data = {"files": [_gguf_payload(path) for path in found]}
+
+    return make_api_response(data=data)
+
+
+def _gguf_payload(path: Path) -> dict[str, Any]:
+    """Describe one produced GGUF file."""
+    model_id = _model_id_from_artefact(path)
+    return {
+        "path": str(path),
+        "name": path.name,
+        "sizeOnDisk": path.stat().st_size,
+        "modelId": model_id,
+        "quantType": _quant_type_from_gguf(path, model_id),
+    }
 
 
 # --- dataset ---------------------------------------------------------------
 
 
 @api.post("/dataset")
-def post_dataset() -> Response:
-    """Validate an uploaded dataset, reporting every problem at once."""
+def api_dataset() -> dict[str, Any] | tuple[dict[str, Any], int]:
+    """Validate an uploaded dataset, reporting every problem at once.
+
+    Multipart, so no JSON body decorator: there is nothing to parse.
+    """
+    (result, message, data, status_code, reflect) = (True, "", {}, 200, True)
+
     uploaded = request.files.get("file")
+
     if uploaded is None or not uploaded.filename:
-        return _failure("No file was uploaded.", 400)
-    target = ensure_dir(UPLOAD_DIR) / Path(uploaded.filename).name
-    uploaded.save(target)
-    return jsonify(_dataset_payload(validate_dataset(target)))
+        result = False
+        message = "No file was uploaded."
+        status_code = HTTP_BAD_REQUEST
+    else:
+        target = ensure_dir(UPLOAD_DIR) / Path(uploaded.filename).name
+        uploaded.save(target)
+        if target.stat().st_size > MAX_DATASET_SIZE:
+            target.unlink()
+            result = False
+            message = f"The dataset exceeds the {MAX_DATASET_SIZE // (1024 * 1024)} MB limit."
+            status_code = HTTP_UNPROCESSABLE
+        else:
+            data = _dataset_payload(validate_dataset(target))
+
+    return make_api_response(result, message, data, status_code, reflect)
 
 
 def _dataset_payload(report: DatasetReport) -> dict[str, Any]:
@@ -181,18 +231,18 @@ def _dataset_payload(report: DatasetReport) -> dict[str, Any]:
 
 
 @api.get("/parameters")
-def get_parameters() -> Response:
+def api_parameters() -> dict[str, Any]:
     """Every tunable, with the label and explanation the form needs.
 
     This is the same metadata the CLI editor and the manual are built from, so
     the three can never describe a parameter differently.
     """
-    return jsonify(
-        {
-            "lora": [_spec_payload(spec) for spec in describe(LoraSettings)],
-            "sft": [_spec_payload(spec) for spec in describe(SftSettings)],
-        }
-    )
+    data = {
+        "lora": [_spec_payload(spec) for spec in describe(LoraSettings)],
+        "sft": [_spec_payload(spec) for spec in describe(SftSettings)],
+    }
+
+    return make_api_response(data=data)
 
 
 def _spec_payload(spec: Any) -> dict[str, Any]:
@@ -210,50 +260,69 @@ def _spec_payload(spec: Any) -> dict[str, Any]:
 
 
 @api.get("/presets")
-def get_presets() -> Response:
+def api_presets() -> dict[str, Any]:
     """The names of every stored preset."""
-    return jsonify(list(list_presets()))
+    return make_api_response(data={"presets": list(list_presets())})
 
 
 @api.get("/presets/<name>")
-def get_preset(name: str) -> Response:
+def api_preset(name: str) -> dict[str, Any] | tuple[dict[str, Any], int]:
     """One stored preset's parameters."""
+    (result, message, data, status_code, reflect) = (True, "", {}, 200, True)
+
     try:
         preset = load_preset(name)
     except ConfigError as error:
-        return _failure(str(error), 404)
-    return jsonify({"name": preset.name, "lora": asdict(preset.lora), "sft": asdict(preset.sft)})
+        result = False
+        message = str(error)
+        status_code = HTTP_NOT_FOUND
+    else:
+        data = {"name": preset.name, "lora": asdict(preset.lora), "sft": asdict(preset.sft)}
+
+    return make_api_response(result, message, data, status_code, reflect)
 
 
 @api.post("/presets")
-def post_preset() -> Response:
+@check_json_data
+def api_preset_save(json_data: dict[str, Any]) -> dict[str, Any] | tuple[dict[str, Any], int]:
     """Store the submitted parameters under a name."""
-    payload = request.get_json(silent=True) or {}
+    (result, message, data, status_code, reflect) = (True, "", {}, 200, True)
+
     try:
-        settings = _settings_from(payload)
-        target = save_preset(TrainingPreset(name=str(payload.get("name", "")), lora=settings[0], sft=settings[1]))
+        lora, sft = _settings_from(json_data)
+        target = save_preset(TrainingPreset(name=str(json_data.get("name", "")), lora=lora, sft=sft))
     except ConfigError as error:
-        return _failure(str(error), 400)
-    return jsonify({"path": str(target)})
+        result = False
+        message = str(error)
+        status_code = HTTP_UNPROCESSABLE
+    else:
+        data = {"path": str(target)}
+
+    return make_api_response(result, message, data, status_code, reflect)
 
 
 # --- estimate --------------------------------------------------------------
 
 
 @api.post("/estimate")
-def post_estimate() -> Response:
+@check_json_data
+def api_estimate(json_data: dict[str, Any]) -> dict[str, Any] | tuple[dict[str, Any], int]:
     """Predict peak memory for a run before anything is downloaded."""
-    payload = request.get_json(silent=True) or {}
-    model_id = str(payload.get("modelId", ""))
+    (result, message, data, status_code, reflect) = (True, "", {}, 200, True)
+
+    model_id = str(json_data.get("modelId", ""))
+
     try:
-        lora, sft = _settings_from(payload)
+        lora, sft = _settings_from(json_data)
         shape = ModelShape.from_config(model_id, fetch_config(model_id), fetch_parameter_count(model_id))
     except (ConfigError, HubError, ValueError) as error:
-        return _failure(str(error), 400)
+        result = False
+        message = str(error)
+        status_code = HTTP_UNPROCESSABLE
+    else:
+        data = _estimate_payload(shape, check_fit(shape, lora, sft, detect().gpu))
 
-    verdict = check_fit(shape, lora, sft, detect().gpu)
-    estimate = _estimate_payload(shape, verdict)
-    return jsonify(estimate)
+    return make_api_response(result, message, data, status_code, reflect)
 
 
 def _estimate_payload(shape: ModelShape, verdict: Any) -> dict[str, Any]:
@@ -275,58 +344,94 @@ def _estimate_payload(shape: ModelShape, verdict: Any) -> dict[str, Any]:
 
 
 @api.post("/jobs/train")
-def post_train() -> Response:
+@check_json_data
+def api_jobs_train(json_data: dict[str, Any]) -> dict[str, Any] | tuple[dict[str, Any], int]:
     """Start a fine-tune, which merges automatically when it succeeds."""
-    payload = request.get_json(silent=True) or {}
-    dataset = Path(str(payload.get("dataset", "")))
+    (result, message, data, status_code, reflect) = (True, "", {}, 200, True)
+
+    dataset = Path(str(json_data.get("dataset", "")))
+
     if not dataset.is_file():
-        return _failure(f"No dataset at {dataset}.", 400)
-    try:
-        lora, sft = _settings_from(payload)
-    except ConfigError as error:
-        return _failure(str(error), 400)
-    model_id = str(payload.get("modelId", ""))
-    return _start("train", lambda sink: train_and_merge(model_id, dataset, lora, sft, sink=sink))
+        result = False
+        message = f"No dataset at {dataset}."
+        status_code = HTTP_UNPROCESSABLE
+    else:
+        try:
+            lora, sft = _settings_from(json_data)
+        except ConfigError as error:
+            result = False
+            message = str(error)
+            status_code = HTTP_UNPROCESSABLE
+        else:
+            model_id = str(json_data.get("modelId", ""))
+            (result, message, data, status_code) = _start(
+                "train", lambda sink: train_and_merge(model_id, dataset, lora, sft, sink=sink)
+            )
+
+    return make_api_response(result, message, data, status_code, reflect)
 
 
 @api.post("/jobs/quantize")
-def post_quantize() -> Response:
+@check_json_data
+def api_jobs_quantize(json_data: dict[str, Any]) -> dict[str, Any] | tuple[dict[str, Any], int]:
     """Start a quantization of an already merged model."""
-    payload = request.get_json(silent=True) or {}
-    model_id = str(payload.get("modelId", ""))
-    quant_type = str(payload.get("quantType", QuantSettings().quant_type))
-    return _start("quantize", lambda sink: quantize(model_id, quant_type, sink=sink))
+    model_id = str(json_data.get("modelId", ""))
+    quant_type = str(json_data.get("quantType", QuantSettings().quant_type))
+
+    (result, message, data, status_code) = _start("quantize", lambda sink: quantize(model_id, quant_type, sink=sink))
+
+    return make_api_response(result, message, data, status_code, True)
 
 
 @api.post("/jobs/deploy")
-def post_deploy() -> Response:
+@check_json_data
+def api_jobs_deploy(json_data: dict[str, Any]) -> dict[str, Any] | tuple[dict[str, Any], int]:
     """Start a deployment to a local model runner."""
-    payload = request.get_json(silent=True) or {}
-    gguf = Path(str(payload.get("path", "")))
+    (result, message, data, status_code, reflect) = (True, "", {}, 200, True)
+
+    gguf = Path(str(json_data.get("path", "")))
+
     if not gguf.is_file():
-        return _failure(f"No GGUF file at {gguf}.", 400)
-    runner = str(payload.get("runner", ""))
-    model_id = str(payload.get("modelId", ""))
-    name = str(payload.get("name", "")) or _default_name(gguf, model_id, str(payload.get("quantType", "")))
-    if runner == "ollama":
-        return _start("deploy", lambda sink: deploy_to_ollama(gguf, name, sink=sink))
-    return _start("deploy", lambda sink: deploy_to_lm_studio(gguf, model_id or None, sink=sink))
+        result = False
+        message = f"No GGUF file at {gguf}."
+        status_code = HTTP_UNPROCESSABLE
+    else:
+        model_id = str(json_data.get("modelId", ""))
+        name = str(json_data.get("name", "")) or _default_name(gguf, model_id, str(json_data.get("quantType", "")))
+        work = (
+            (lambda sink: deploy_to_ollama(gguf, name, sink=sink))
+            if str(json_data.get("runner", "")) == "ollama"
+            else (lambda sink: deploy_to_lm_studio(gguf, model_id or None, sink=sink))
+        )
+        (result, message, data, status_code) = _start("deploy", work)
+
+    return make_api_response(result, message, data, status_code, reflect)
 
 
 @api.get("/jobs/current")
-def get_current_job() -> Response:
-    """The running or most recently finished stage."""
+def api_jobs_current() -> dict[str, Any]:
+    """The running or most recently finished stage, or nothing at all."""
     job = current_app.extensions["llmft_jobs"].current
-    return jsonify(_job_payload(job) if job else None)
+
+    return make_api_response(data={"job": _job_payload(job) if job else None})
 
 
 @api.get("/jobs/stream")
-def get_job_stream() -> Response:
-    """Stream a stage's progress as server-sent events."""
+def api_jobs_stream() -> Response | tuple[dict[str, Any], int]:
+    """Stream a stage's progress as server-sent events.
+
+    Not an envelope: this is a stream the browser reads with ``EventSource``,
+    and each event carries its own JSON. The refusal path is an envelope.
+    """
     job = current_app.extensions["llmft_jobs"].current
+    result: Response | tuple[dict[str, Any], int]
+
     if job is None:
-        return _failure("No job is running.", 404)
-    return Response(_events(job), mimetype="text/event-stream", headers={"Cache-Control": "no-cache"})
+        result = make_api_response(False, "No job is running.", {}, HTTP_NOT_FOUND, True)
+    else:
+        result = Response(_events(job), mimetype="text/event-stream", headers={"Cache-Control": "no-cache"})
+
+    return result
 
 
 def _events(job: Job) -> Iterator[str]:
@@ -378,13 +483,24 @@ def _job_payload(job: Job) -> dict[str, Any]:
     }
 
 
-def _start(kind: str, work: Any) -> Response:
-    """Hand a stage to the runner, refusing if one is already going."""
+def _start(kind: str, work: Any) -> tuple[bool, str, dict[str, Any], int]:
+    """Hand a stage to the runner, refusing if one is already going.
+
+    Args:
+        kind: The stage name, used in the job identifier.
+        work: A callable taking a progress sink.
+
+    Returns:
+        Tuple of (result, message, data, status_code).
+    """
     try:
         job = current_app.extensions["llmft_jobs"].start(kind, work)
     except JobBusy as error:
-        return _failure(str(error), 409)
-    return jsonify(_job_payload(job))
+        outcome = (False, str(error), {}, HTTP_CONFLICT)
+    else:
+        outcome = (True, "", {"job": _job_payload(job)}, 200)
+
+    return outcome
 
 
 # --- shared ----------------------------------------------------------------
@@ -426,10 +542,3 @@ def _quant_type_from_gguf(path: Path, model_id: str) -> str:
 def _directory_size(path: Path) -> int:
     """Total size of everything under a directory."""
     return sum(item.stat().st_size for item in path.rglob("*") if item.is_file()) if path.is_dir() else 0
-
-
-def _failure(message: str, status: int) -> Response:
-    """Return an error the browser can display verbatim."""
-    response = jsonify({"error": message})
-    response.status_code = status
-    return response

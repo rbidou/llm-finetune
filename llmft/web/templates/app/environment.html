@@ -1,0 +1,100 @@
+{% extends "app/base.html" %}
+{% set active_page = 'environment' %}
+{% block title %}LLM Finetune - Environment{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Environment</h2>
+    <p>What this machine can currently do, and the reason for anything it cannot</p>
+</div>
+
+<!-- 1. LOADING -->
+<div id="loading-section">
+    <div class="loading-overlay">
+        <span class="spinner"></span> Inspecting this machine&hellip;
+    </div>
+</div>
+
+<!-- 2. ERROR -->
+<div id="error-section" style="display: none;">
+    <div class="panel">
+        <div class="panel-body">
+            <div class="empty-state">
+                <p id="error-message" style="color: var(--danger);"></p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 3. RESULTS -->
+<div id="results-section" style="display: none;">
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-label">Graphics Card</div>
+            <div class="stat-value stat-value-sm" id="stat-gpu">&mdash;</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">VRAM Free</div>
+            <div class="stat-value" id="stat-free">&mdash;</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">VRAM Total</div>
+            <div class="stat-value" id="stat-total">&mdash;</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Operations Available</div>
+            <div class="stat-value" id="stat-features">&mdash;</div>
+        </div>
+    </div>
+
+    <div class="panel">
+        <div class="panel-header">
+            <h3>Operations</h3>
+        </div>
+        <div class="panel-body">
+            <p class="field-description" style="margin-bottom: 16px;">
+                An unavailable operation stays disabled until what it needs is installed.
+                This application never installs LM Studio or Ollama.
+            </p>
+            <div class="table-scroll">
+                <table class="data-table" style="margin-bottom: 0;">
+                    <thead>
+                        <tr>
+                            <th>Operation</th>
+                            <th style="width: 120px;">Available</th>
+                            <th>Reason</th>
+                            <th style="width: 50px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="features-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="panel">
+        <div class="panel-header">
+            <h3>Deployment Targets</h3>
+        </div>
+        <div class="panel-body">
+            <div class="table-scroll">
+                <table class="data-table" style="margin-bottom: 0;">
+                    <thead>
+                        <tr>
+                            <th>Runner</th>
+                            <th style="width: 120px;">Available</th>
+                            <th>Reason</th>
+                            <th style="width: 50px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="targets-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/environment.js') }}"></script>
+{% endblock %}

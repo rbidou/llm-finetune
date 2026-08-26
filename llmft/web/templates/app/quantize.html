@@ -1,0 +1,90 @@
+{% extends "app/base.html" %}
+{% set active_page = 'quantize' %}
+{% block title %}LLM Finetune - Quantize{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Quantize</h2>
+    <p>Convert a merged model to GGUF, at whichever precision the hardware it will run on can afford</p>
+</div>
+
+<!-- 1. INPUT -->
+<div class="panel">
+    <div class="panel-header">
+        <h3>Input</h3>
+    </div>
+    <div class="panel-body">
+        <div class="form-group">
+            <label for="model-select">Merged model</label>
+            <p class="field-description">
+                Any model this application has merged can be quantized again at any time,
+                as often as you like, without repeating the fine-tune.
+            </p>
+            <select class="form-control form-control-mono" id="model-select" style="max-width: 560px;"></select>
+        </div>
+
+        <div class="form-group">
+            <label for="type-select">Quantization type</label>
+            <select class="form-control form-control-mono" id="type-select" style="max-width: 560px;"></select>
+            <p class="field-description" id="type-explanation"></p>
+        </div>
+
+        <div style="margin-top: 16px;">
+            <button class="btn btn-primary" id="run-btn">Quantize</button>
+        </div>
+    </div>
+</div>
+
+<!-- 2. LOADING -->
+<div id="loading-section" style="display: none;">
+    <div class="panel">
+        <div class="panel-header">
+            <h3 id="progress-title">Quantizing</h3>
+            <span class="badge badge-accent"><span class="status-dot building"></span>running</span>
+        </div>
+        <div class="panel-body">
+            <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+            <p class="progress-message" id="progress-message"></p>
+        </div>
+    </div>
+</div>
+
+<!-- 3. ERROR -->
+<div id="error-section" style="display: none;">
+    <div class="panel">
+        <div class="panel-body">
+            <div class="empty-state">
+                <p id="error-message" style="color: var(--danger);"></p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 4. RESULTS -->
+<div id="results-section" style="display: none;">
+    <div class="panel">
+        <div class="panel-header">
+            <h3>Result</h3>
+        </div>
+        <div class="panel-body">
+            <div id="results-verdict" class="verdict ok"></div>
+            <div class="table-scroll">
+                <table class="data-table" style="margin-bottom: 0;">
+                    <thead>
+                        <tr>
+                            <th>File</th>
+                            <th style="width: 120px;">Size</th>
+                            <th style="width: 50px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="results-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/quantize.js') }}"></script>
+{% endblock %}

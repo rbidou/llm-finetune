@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}LLM Finetune{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+    {% block head %}{% endblock %}
+</head>
+<body>
+    {# The brand points at this application's own first page: LLM Finetune is a
+       self-contained console, not one tool inside a portal, so there is no
+       parent site to open in a second tab. #}
+    <nav class="sidebar">
+        <div class="sidebar-brand">
+            <h1><a href="{{ url_for('page_finetune') }}">LLM Finetune</a></h1>
+            <div class="subtitle">QLoRA Fine-Tuning</div>
+        </div>
+
+        <div class="sidebar-nav">
+            <a href="{{ url_for('page_finetune') }}"
+               class="{% if active_page == 'fine-tune' %}active{% endif %}">
+                <span class="nav-icon">&#9654;</span>
+                <span class="nav-label">Fine-tune</span>
+            </a>
+            <a href="{{ url_for('page_quantize') }}"
+               class="{% if active_page == 'quantize' %}active{% endif %}">
+                <span class="nav-icon">&#9733;</span>
+                <span class="nav-label">Quantize</span>
+            </a>
+            <a href="{{ url_for('page_deploy') }}"
+               class="{% if active_page == 'deploy' %}active{% endif %}">
+                <span class="nav-icon">&#9673;</span>
+                <span class="nav-label">Deploy</span>
+            </a>
+            <a href="{{ url_for('page_environment') }}"
+               class="{% if active_page == 'environment' %}active{% endif %}">
+                <span class="nav-icon">&#9881;</span>
+                <span class="nav-label">Environment</span>
+            </a>
+            <a href="{{ url_for('page_documentation') }}"
+               class="{% if active_page == 'documentation' %}active{% endif %}">
+                <span class="nav-icon">&#128196;</span>
+                <span class="nav-label">Documentation</span>
+            </a>
+        </div>
+
+        {# Global state, not a property of any one page: which card is present
+           and how much of it something else is already holding. #}
+        <div class="sidebar-status">
+            <div class="status-label">GPU</div>
+            <div class="status-value" id="gpu-status">&mdash;</div>
+        </div>
+
+        <div class="sidebar-footer">
+            LLM Finetune {{ version }}<br>
+            &copy; 2026 Renaud Bidou.
+        </div>
+    </nav>
+
+    <main class="main-content">
+        {% block content %}{% endblock %}
+    </main>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,259 @@
+{% extends "app/base.html" %}
+{% set active_page = 'fine-tune' %}
+{% block title %}LLM Finetune - Fine-tune{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Fine-tune</h2>
+    <p>Train a QLoRA adapter on your own conversations, then merge it back into the base weights</p>
+</div>
+
+{# The five steps are <details>: collapsing and expanding is native, and no step
+   is ever locked shut, so an earlier answer can always be reopened. Answering
+   one collapses it and opens the next. #}
+
+<!-- Step 1 -->
+<details class="panel" id="step-model" data-state="active" open>
+    <summary class="panel-header">
+        <span class="step-title">
+            <span class="step-number">1</span>
+            <span class="step-name">Base model</span>
+        </span>
+        <span class="step-title" style="gap: 12px;">
+            <span class="step-answer" id="answer-model"></span>
+            <span class="step-chevron">&#9654;</span>
+        </span>
+    </summary>
+    <div class="panel-body">
+        <div class="form-check">
+            <input type="checkbox" id="local-only">
+            <label for="local-only">Only models already downloaded</label>
+        </div>
+
+        <div class="form-group" id="model-remote" style="margin-top: 16px;">
+            <label for="model-search">Search Hugging Face</label>
+            <p class="field-description">
+                Suggestions refresh as you type: the top twenty by trending score, restricted to
+                original models whose name starts with what you typed. Models already on this
+                machine are marked.
+            </p>
+            <div class="autocomplete-wrapper" style="max-width: 560px;">
+                <input type="text" class="form-control form-control-mono" id="model-search"
+                       placeholder="Start typing, e.g. Qwen3" autocomplete="off">
+                <div class="autocomplete-dropdown" id="model-dropdown"></div>
+            </div>
+        </div>
+
+        <div class="form-group" id="model-local" style="display: none; margin-top: 16px;">
+            <label for="model-cached">Cached models</label>
+            <select class="form-control form-control-mono" id="model-cached" style="max-width: 560px;"></select>
+        </div>
+
+        <div style="margin-top: 16px;">
+            <button class="btn btn-primary" id="model-continue" disabled>Continue</button>
+        </div>
+    </div>
+</details>
+
+<!-- Step 2 -->
+<details class="panel" id="step-dataset">
+    <summary class="panel-header">
+        <span class="step-title">
+            <span class="step-number">2</span>
+            <span class="step-name">Training dataset</span>
+        </span>
+        <span class="step-title" style="gap: 12px;">
+            <span class="step-answer" id="answer-dataset"></span>
+            <span class="step-chevron">&#9654;</span>
+        </span>
+    </summary>
+    <div class="panel-body">
+        <div class="form-group">
+            <label>Conversations file</label>
+            <p class="field-description">
+                A JSON array of records, each holding a <code>messages</code> list of
+                <code>role</code> / <code>content</code> pairs. Every problem found is reported
+                at once, with its location.
+            </p>
+            <div class="file-drop-zone" id="file-drop-zone">
+                <input type="file" id="file-input" accept=".json,application/json" style="display: none;">
+                <div class="file-drop-content" id="file-drop-content">
+                    <span class="file-drop-icon">&#128196;</span>
+                    <p>Drag and drop the dataset here</p>
+                    <p class="file-drop-hint">or <a href="#" id="file-browse-link">browse files</a></p>
+                    <p class="file-drop-hint" style="margin-top: 8px;" id="file-size-hint"></p>
+                </div>
+                <div class="file-drop-selected" id="file-drop-selected" style="display: none;">
+                    <span class="file-drop-icon">&#9989;</span>
+                    <p id="file-name"></p>
+                    <p class="file-drop-hint"><a href="#" id="file-change-link">change file</a></p>
+                </div>
+            </div>
+        </div>
+
+        <div id="dataset-verdict" class="verdict" style="display: none;"></div>
+        <div class="table-scroll" id="dataset-issues" style="display: none;">
+            <table class="data-table" style="margin-bottom: 0;">
+                <thead>
+                    <tr>
+                        <th style="width: 240px;">Location</th>
+                        <th>Problem</th>
+                        <th style="width: 50px;"></th>
+                    </tr>
+                </thead>
+                <tbody id="dataset-issues-body"></tbody>
+            </table>
+        </div>
+    </div>
+</details>
+
+<!-- Step 3 -->
+<details class="panel" id="step-params">
+    <summary class="panel-header">
+        <span class="step-title">
+            <span class="step-number">3</span>
+            <span class="step-name">Parameters</span>
+        </span>
+        <span class="step-title" style="gap: 12px;">
+            <span class="step-answer" id="answer-params"></span>
+            <span class="step-chevron">&#9654;</span>
+        </span>
+    </summary>
+    <div class="panel-body">
+        <div class="form-inline" style="margin-bottom: 24px;">
+            <div class="form-group">
+                <label for="preset-list">Load a preset</label>
+                <select class="form-control form-control-sm" id="preset-list" style="min-width: 200px;"></select>
+            </div>
+            <div class="form-group">
+                <label for="preset-name">Save the current values as</label>
+                <input type="text" class="form-control form-control-sm" id="preset-name"
+                       placeholder="preset name" autocomplete="off" style="min-width: 200px;">
+            </div>
+            <button class="btn btn-sm" id="preset-save">Save preset</button>
+        </div>
+
+        <div class="section-label">LoRA adapter</div>
+        <div class="params-grid" id="params-lora" style="margin-bottom: 28px;"></div>
+
+        <div class="section-label">Training schedule</div>
+        <div class="params-grid" id="params-sft"></div>
+
+        <div style="margin-top: 24px;">
+            <button class="btn btn-primary" id="params-continue">Use these parameters</button>
+        </div>
+    </div>
+</details>
+
+<!-- Step 4 -->
+<details class="panel" id="step-estimate">
+    <summary class="panel-header">
+        <span class="step-title">
+            <span class="step-number">4</span>
+            <span class="step-name">Pre-flight estimate</span>
+        </span>
+        <span class="step-title" style="gap: 12px;">
+            <span class="step-answer" id="answer-estimate"></span>
+            <span class="step-chevron">&#9654;</span>
+        </span>
+    </summary>
+    <div class="panel-body">
+        <p class="field-description" style="margin-bottom: 16px;">
+            The same prediction the terminal makes: peak memory for these parameters against
+            this machine. The run stays disabled until it passes.
+        </p>
+        <button class="btn" id="estimate-run">Estimate memory</button>
+
+        <div id="estimate-verdict" class="verdict" style="display: none; margin-top: 16px;"></div>
+        <div class="table-scroll" id="estimate-detail" style="display: none;">
+            <table class="data-table" style="margin-bottom: 0;">
+                <thead>
+                    <tr>
+                        <th style="width: 200px;">Detail</th>
+                        <th>Value</th>
+                        <th style="width: 50px;"></th>
+                    </tr>
+                </thead>
+                <tbody id="estimate-body"></tbody>
+            </table>
+        </div>
+    </div>
+</details>
+
+<!-- Step 5 -->
+<details class="panel" id="step-run">
+    <summary class="panel-header">
+        <span class="step-title">
+            <span class="step-number">5</span>
+            <span class="step-name">Run</span>
+        </span>
+        <span class="step-title" style="gap: 12px;">
+            <span class="step-answer" id="answer-run"></span>
+            <span class="step-chevron">&#9654;</span>
+        </span>
+    </summary>
+    <div class="panel-body">
+        <p class="field-description" style="margin-bottom: 16px;">
+            The merge runs automatically once training succeeds, so this leaves a standalone
+            model rather than an adapter to combine by hand.
+        </p>
+        <button class="btn btn-primary" id="run-btn" disabled>Fine-tune and merge</button>
+    </div>
+</details>
+
+<!-- LOADING -->
+<div id="loading-section" style="display: none;">
+    <div class="panel">
+        <div class="panel-header">
+            <h3 id="progress-title">Fine-tuning</h3>
+            <span class="badge badge-accent"><span class="status-dot building"></span>running</span>
+        </div>
+        <div class="panel-body">
+            <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+            <p class="progress-message" id="progress-message"></p>
+        </div>
+    </div>
+</div>
+
+<!-- ERROR -->
+<div id="error-section" style="display: none;">
+    <div class="panel">
+        <div class="panel-body">
+            <div class="empty-state">
+                <p id="error-message" style="color: var(--danger);"></p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- RESULTS -->
+<div id="results-section" style="display: none;">
+    <div class="panel">
+        <div class="panel-header">
+            <h3>Result</h3>
+        </div>
+        <div class="panel-body">
+            <div id="results-verdict" class="verdict ok"></div>
+            <div class="table-scroll">
+                <table class="data-table" style="margin-bottom: 0;">
+                    <thead>
+                        <tr>
+                            <th style="width: 200px;">Detail</th>
+                            <th>Value</th>
+                            <th style="width: 50px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="results-body"></tbody>
+                </table>
+            </div>
+            <p class="field-description" style="margin-top: 16px;">
+                The merged model is ready to <a href="{{ url_for('page_quantize') }}">quantize</a>.
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/finetune.js') }}"></script>
+{% endblock %}

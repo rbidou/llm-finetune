@@ -128,55 +128,75 @@ reuses it instead of converting again.
 python run.py web
 ```
 
-Open <http://127.0.0.1:5000>. Four tabs: Fine-tune, Quantize, Deploy and
-Environment. The GPU's current state is in the header, including a warning when
-another application is holding most of it.
+Open <http://127.0.0.1:5000>. A sidebar on the left carries the five pages —
+Fine-tune, Quantize, Deploy, Environment and Documentation — and, beneath them,
+the state of the GPU: which card is present, how much of it is free, and a
+warning in amber when another application is holding most of it. That line is in
+the sidebar rather than on a page because it applies to all of them.
+
+Each page follows the same shape: an input panel at the top, then progress, then
+either the result or the error, only ever one of the three at a time. Errors
+appear in place, where the result would have been; the small notices in the
+top-right corner are for things that pass — a copy confirmed, a stage started.
+Every row of every result has a copy button at its right-hand end.
 
 ### Fine-tune
 
-The five steps are collapsible sections. The first is open; answering one
+The five steps are collapsible panels. The first is open; answering one
 collapses it, marks it done with its answer in the header, and opens the next.
-Any section can be reopened by clicking its header, and changing an earlier
-answer un-answers the later ones — so a new model cannot leave a previous
-model's estimate behind.
+Any panel can be reopened by clicking its header, and changing an earlier answer
+un-answers the later ones — so a new model cannot leave a previous model's
+estimate behind.
 
-**1. Base model.** Type to search: the dropdown refreshes as you type, showing
-the top twenty by trending score, filtered to models whose name starts with what
-you typed, with already-downloaded models marked. Tick *Only models already
-downloaded* for the local list instead.
+**1. Base model.** Type to search: the suggestion list refreshes as you type,
+showing the top twenty by trending score, filtered to models whose name starts
+with what you typed. Models already on this machine carry a *downloaded* badge.
+Arrow keys move through the list and Enter takes the highlighted one; Enter with
+nothing highlighted takes exactly what you typed, so a full identifier can
+always be entered by hand. Tick *Only models already downloaded* for the local
+list instead.
 
-**2. Training dataset.** Choose the JSON file. It is validated on upload and
-every problem is listed with its location.
+**2. Training dataset.** Drop the JSON file onto the zone, or browse for it. It
+is validated on upload; if it cannot be used, every problem is listed in a table
+with its location, and the step stays open so the list remains in view.
 
-**3. Parameters.** Each field carries its explanation. The preset bar loads and
-saves named sets.
+**3. Parameters.** Each field carries its explanation underneath it. Booleans
+are switches. The bar above loads a stored preset and saves the current values
+as a new one.
 
-**4. Pre-flight estimate.** Runs the same prediction as the terminal. The Run
-button stays disabled until it passes.
+**4. Pre-flight estimate.** Runs the same prediction as the terminal, and shows
+what it is made of: parameter count, vocabulary, peak memory required against
+memory available. When it does not fit, the shortfall and the remedies are
+listed too. The Run button stays disabled until it passes.
 
-**5. Run.** Training and the merge that follows it report into the notification
-panel at the bottom right, with a live progress bar.
+**5. Run.** Training and the merge that follows it report into a progress panel
+below the steps, with a live bar. When it finishes, the merged model's path is
+shown with a link to the Quantize page.
 
 ### Quantize
 
 Pick a merged model and an output type; the explanation of the selected type is
 shown beneath it. Types needing `llama-quantize` are absent from the list
-entirely when that binary is not installed.
+entirely when that binary is not installed. The finished file is reported with
+its size, and its path can be copied.
 
 ### Deploy
 
 Pick a GGUF and a runner. Only installed runners appear. A name for Ollama is
-proposed from the model and its quantization; you can change it.
+proposed from the model and its quantization; you can change it. When the
+deployment finishes, the command that runs the model is shown ready to copy.
 
 ### Environment
 
-The same report as `python run.py check`: every operation, whether it is
-available, and the reason when it is not.
+The same report as `python run.py check`: the card and its memory as headline
+figures, then every operation, whether it is available, and the reason when it
+is not. Deployment targets are listed the same way.
 
 ### Documentation
 
-This manual is available inside the interface, and the full PDF can be
-downloaded from there.
+This manual is available inside the interface — the chapters below are the ones
+it carries. The search box above them opens the chapters that match and marks
+every occurrence. The full PDF can be downloaded from the same page.
 
 ## When something goes wrong
 
