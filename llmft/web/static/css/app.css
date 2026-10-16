@@ -493,22 +493,21 @@ select.form-control[multiple] {
     z-index: 1000;
     animation: slideIn 0.3s ease;
     max-width: 400px;
+    background: var(--bg-secondary);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
 }
 
 .notification.success {
-    background: rgba(63, 185, 80, 0.15);
     border: 1px solid var(--success);
     color: var(--success);
 }
 
 .notification.error {
-    background: rgba(248, 81, 73, 0.15);
     border: 1px solid var(--danger);
     color: var(--danger);
 }
 
 .notification.info {
-    background: rgba(88, 166, 255, 0.15);
     border: 1px solid var(--info);
     color: var(--info);
 }
