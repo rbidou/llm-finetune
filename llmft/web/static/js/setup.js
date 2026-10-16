@@ -9,6 +9,20 @@ function renderSettings(settings) {
     document.getElementById('default-hint').textContent = `Default: ${settings.defaultOutputDir}`;
     document.getElementById('default-badge').style.display = settings.isDefault ? '' : 'none';
     document.getElementById('reset-btn').disabled = settings.isDefault;
+    renderServer(settings.server);
+}
+
+/**
+ * Show the stored web server address in the form.
+ * @param {object} server - the server part of the settings payload
+ */
+function renderServer(server) {
+    document.getElementById('host-input').value = server.host;
+    document.getElementById('port-input').value = server.port;
+    document.getElementById('server-default-hint').textContent = `Default: ${server.defaultHost}:${server.defaultPort}`;
+    document.getElementById('server-default-badge').style.display = server.isDefault ? '' : 'none';
+    document.getElementById('server-exposed-warning').style.display = server.isLoopback ? 'none' : '';
+    document.getElementById('server-reset-btn').disabled = server.isDefault;
 }
 
 /**
@@ -51,6 +65,33 @@ function handleSave() {
         return;
     }
     saveOutputDir(value);
+}
+
+/**
+ * Store the web server address; empty values restore the defaults.
+ * @param {string} host
+ * @param {string} port
+ */
+async function saveServerAddress(host, port) {
+    const response = await apiFetch('/api/settings/server', { method: 'POST', body: { host, port } });
+
+    if (!response.status) {
+        showError(response.message || 'The web server address could not be changed.');
+        return;
+    }
+    showSection('none');
+    renderSettings(response.data);
+    notify(`The web server will listen on ${response.data.server.url} from its next start`, 'success');
+}
+
+/**
+ * Handle the web server save button click.
+ */
+function handleServerSave() {
+    saveServerAddress(
+        document.getElementById('host-input').value.trim(),
+        document.getElementById('port-input').value.trim(),
+    );
 }
 
 /* ---------- Folder browser ---------- */
@@ -138,6 +179,13 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('reset-btn').addEventListener('click', () => saveOutputDir(''));
     document.getElementById('output-dir-input').addEventListener('keydown', (event) => {
         if (event.key === 'Enter') handleSave();
+    });
+    document.getElementById('server-save-btn').addEventListener('click', handleServerSave);
+    document.getElementById('server-reset-btn').addEventListener('click', () => saveServerAddress('', ''));
+    ['host-input', 'port-input'].forEach((id) => {
+        document.getElementById(id).addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') handleServerSave();
+        });
     });
     loadSettings();
 });

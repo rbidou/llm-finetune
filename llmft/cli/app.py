@@ -67,6 +67,7 @@ from llmft.pipeline import (
     suggested_name,
     train_and_merge,
 )
+from llmft.server_address import ServerAddressError, server_address, set_server_address
 
 HOME = "Home"
 FINETUNE = "Fine-Tune"
@@ -488,18 +489,25 @@ def run_setup(ui: Ui, capabilities: Capabilities) -> None:
     while True:
         ui.goto(SETUP)
         current = output_root()
-        rows = [("Model directory", str(current), "checkpoints, merged models and GGUF files")]
+        address = server_address()
+        rows = [
+            ("Model directory", str(current), "checkpoints, merged models and GGUF files"),
+            ("Web server address", f"{address.host}:{address.port}", "where 'python run.py web' listens"),
+        ]
         action = ui.choose(
             [
                 Choice("output", "Change the model directory"),
                 Choice(
                     "reset", "Restore the default", str(DEFAULT_OUT_DIR), current != DEFAULT_OUT_DIR, "Already the default."
                 ),
+                Choice("server", "Change the web server address"),
+                Choice("server_reset", "Restore the default address", "", not address.is_default, "Already the default."),
             ],
             ui.table(("Setting", "Value", "Holds"), rows, title="Settings"),
             Text.from_markup("[dim]Existing artefacts are not moved: they stay where they were written.[/]"),
+            Text.from_markup("[dim]A new server address applies the next time the web server starts.[/]"),
         )
-        _change_output_root(ui, "" if action.key == "reset" else None)
+        _SETUP_ACTIONS[action.key](ui)
 
 
 def _change_output_root(ui: Ui, value: str | None) -> None:
@@ -516,6 +524,33 @@ def _change_output_root(ui: Ui, value: str | None) -> None:
     else:
         ui.success(f"Models will be written under {target}")
     _acknowledge(ui, "")
+
+
+def _change_server_address(ui: Ui, reset: bool = False) -> None:
+    """Store a new web server address, asking for it unless ``reset`` is set."""
+    ui.goto(SETUP, "Web Server")
+    current = server_address()
+    if not reset:
+        ui.hint("127.0.0.1 keeps the interface on this machine; 0.0.0.0 listens on every network interface.")
+    host = "" if reset else ui.ask("Listening IP address", default=current.host)
+    port = "" if reset else ui.ask("Port", default=str(current.port))
+    try:
+        address = set_server_address(host, port)
+    except ServerAddressError as error:
+        ui.error(str(error))
+    else:
+        ui.success(f"The web server will listen on {address.url} from its next start.")
+        if not address.is_loopback:
+            ui.warn("Other machines on the network will reach it. It has no authentication.")
+    _acknowledge(ui, "")
+
+
+_SETUP_ACTIONS: dict[str, Callable[[Ui], None]] = {
+    "output": lambda ui: _change_output_root(ui, None),
+    "reset": lambda ui: _change_output_root(ui, ""),
+    "server": _change_server_address,
+    "server_reset": lambda ui: _change_server_address(ui, reset=True),
+}
 
 
 _FLOWS: dict[str, Callable[[Ui, Capabilities], None]] = {
@@ -537,7 +572,7 @@ def _main_menu(capabilities: Capabilities) -> list[Choice]:
         Choice("quantize", "Quantize a merged model", "to GGUF", quant.available, quant.reason),
         Choice("deploy", "Deploy a quantized model", "", can_deploy, "No local model runner is installed."),
         Choice("check", "Show environment details"),
-        Choice("setup", "Setup", "model directory"),
+        Choice("setup", "Setup", "model directory, web server address"),
         Choice("quit", "Quit"),
     ]
 

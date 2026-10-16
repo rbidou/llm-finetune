@@ -58,10 +58,14 @@ def handle_web() -> int:
         print(f"The web interface needs: {', '.join(missing)}.\nRun: python run.py setup")
         return 1
 
-    from llmft.web import DEFAULT_HOST, DEFAULT_PORT, serve
+    from llmft.server_address import server_address
+    from llmft.web import serve
 
-    print(f"LLM Finetune is at http://{DEFAULT_HOST}:{DEFAULT_PORT}  (Ctrl+C to stop)")
-    return serve()
+    address = server_address()
+    print(f"LLM Finetune is at {address.url}  (Ctrl+C to stop)")
+    if not address.is_loopback:
+        print("Warning: other machines on the network can reach this server. It has no authentication.")
+    return serve(address.host, address.port)
 
 
 def handle_check() -> int:

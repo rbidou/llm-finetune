@@ -67,7 +67,7 @@ Table: Command-line options
 | Command | What it does |
 |---|---|
 | `python run.py` | Interactive terminal session (the default) |
-| `python run.py web` | Serves the browser interface on 127.0.0.1:5000 |
+| `python run.py web` | Serves the browser interface on 127.0.0.1:5000, or the address set in Setup |
 | `python run.py check` | Reports hardware, packages, tools and available operations |
 | `python run.py setup` | Installs what is missing, asking first |
 
@@ -138,13 +138,17 @@ rather than at the end of a training run. Tab completes folder names as you
 type. **Restore the default** returns to
 `out/`.
 
+It also shows the web server address. **Change the web server address** asks for
+the listening IP address and the port; **Restore the default address** returns
+to 127.0.0.1:5000. See the GUI Setup page below for what the address means.
+
 ## GUI usage
 
 ```
 python run.py web
 ```
 
-Open <http://127.0.0.1:5000>. A sidebar on the left carries the six pages —
+Open <http://127.0.0.1:5000> (or the address set in Setup). A sidebar on the left carries the six pages —
 Fine-tune, Quantize, Deploy, Environment, Setup and Documentation — and, beneath them,
 the state of the GPU: which card is present, how much of it is free, and a
 warning in amber when another application is holding most of it. That line is in
@@ -219,6 +223,15 @@ at the end of the path and press Save. The directory is created if needed and
 must be writable, otherwise the reason is shown in place. **Restore the default** returns to `out/`. The directory cannot be
 changed while a stage is running, since that stage would otherwise write its
 first artefacts in one place and its last in another.
+
+The **Web server** panel sets the IP address and port `python run.py web`
+listens on, 127.0.0.1:5000 by default. The address must be an IP address of
+this machine: 127.0.0.1 keeps the interface on this computer, 0.0.0.0 listens on
+every network interface, and a specific address listens on that interface
+only. A warning is shown for any address other machines can reach — the server
+has no authentication, reads local files and starts processes. The change
+applies the next time the web server starts; the running server keeps its
+current address. **Restore the default** returns to 127.0.0.1:5000.
 
 ### Documentation
 

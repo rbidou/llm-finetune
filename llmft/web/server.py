@@ -15,11 +15,9 @@ from pathlib import Path
 from flask import Flask, Response, abort, redirect, render_template, send_file, url_for
 
 from llmft import __version__
+from llmft.server_address import DEFAULT_HOST, DEFAULT_PORT
 from llmft.web.api import MAX_DATASET_SIZE, api
 from llmft.web.jobs import JobRunner
-
-DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = 5000
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 MANUAL_PDF = PROJECT_ROOT / "docs" / "llm-finetune-manual.pdf"
@@ -100,7 +98,8 @@ def serve(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> int:
     """Run the development server. Returns a process exit code.
 
     Bound to the loopback address by default: this exposes local model files and
-    starts processes, and is not built to face a network.
+    starts processes, and is not built to face a network. The Setup menu can
+    change the address; :func:`llmft.server_address.server_address` reads it.
     """
     create_app().run(host=host, port=port, threaded=True, debug=False)
     return 0

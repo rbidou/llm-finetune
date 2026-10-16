@@ -61,6 +61,7 @@ from llmft.pipeline import (
     train_and_merge,
 )
 from llmft.progress import ProgressEvent
+from llmft.server_address import DEFAULT_ADDRESS, ServerAddressError, server_address, set_server_address
 from llmft.web.jobs import Job, JobBusy
 from llmft.web.responses import check_json_data, make_api_response
 
@@ -234,6 +235,27 @@ def api_settings_save(json_data: dict[str, Any]) -> dict[str, Any] | tuple[dict[
     return make_api_response(result, message, data, status_code, reflect)
 
 
+@api.post("/settings/server")
+@check_json_data
+def api_settings_server(json_data: dict[str, Any]) -> dict[str, Any] | tuple[dict[str, Any], int]:
+    """Store the address the web server listens on; empty values restore the defaults.
+
+    Not refused while a stage runs: the address only applies at the next start.
+    """
+    (result, message, data, status_code, reflect) = (True, "", {}, 200, True)
+
+    try:
+        set_server_address(str(json_data.get("host", "")), str(json_data.get("port", "")))
+    except ServerAddressError as error:
+        result = False
+        message = str(error)
+        status_code = HTTP_UNPROCESSABLE
+    else:
+        data = _settings_payload()
+
+    return make_api_response(result, message, data, status_code, reflect)
+
+
 @api.get("/folders")
 def api_folders() -> dict[str, Any] | tuple[dict[str, Any], int]:
     """The subfolders of a directory, for the Setup page's directory browser.
@@ -267,10 +289,20 @@ def _folders_payload(listing: FolderListing) -> dict[str, Any]:
 def _settings_payload() -> dict[str, Any]:
     """Describe the current settings for the Setup page."""
     current = output_root()
+    address = server_address()
     return {
         "outputDir": str(current),
         "defaultOutputDir": str(DEFAULT_OUT_DIR),
         "isDefault": current == DEFAULT_OUT_DIR,
+        "server": {
+            "host": address.host,
+            "port": address.port,
+            "url": address.url,
+            "defaultHost": DEFAULT_ADDRESS.host,
+            "defaultPort": DEFAULT_ADDRESS.port,
+            "isDefault": address.is_default,
+            "isLoopback": address.is_loopback,
+        },
     }
 
 

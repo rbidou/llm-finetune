@@ -79,7 +79,7 @@ def output_root() -> Path:
     A missing or unreadable settings file means the default: the setting is a
     convenience, and a damaged one should not stop the application starting.
     """
-    stored = _read_settings().get(OUTPUT_DIR_KEY)
+    stored = read_settings().get(OUTPUT_DIR_KEY)
     return Path(stored) if isinstance(stored, str) and stored else DEFAULT_OUT_DIR
 
 
@@ -90,8 +90,7 @@ def set_output_root(raw: str) -> Path:
     application directory, matching where the default lives.
     """
     target = validated_output_dir(raw) if raw.strip() else DEFAULT_OUT_DIR
-    settings = {**_read_settings(), OUTPUT_DIR_KEY: str(target)}
-    SETTINGS_FILE.write_text(f"{json.dumps(settings, indent=2)}\n", encoding="utf-8")
+    update_settings({OUTPUT_DIR_KEY: str(target)})
     return target
 
 
@@ -115,13 +114,19 @@ def validated_output_dir(raw: str) -> Path:
     return target
 
 
-def _read_settings() -> dict[str, object]:
+def read_settings() -> dict[str, object]:
     """Return the stored settings, or an empty mapping if there are none."""
     try:
         payload = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         payload = {}
     return payload if isinstance(payload, dict) else {}
+
+
+def update_settings(changes: dict[str, object]) -> None:
+    """Merge ``changes`` into the stored settings, keeping every other key."""
+    settings = {**read_settings(), **changes}
+    SETTINGS_FILE.write_text(f"{json.dumps(settings, indent=2)}\n", encoding="utf-8")
 
 
 def model_name(model_id: str) -> str:

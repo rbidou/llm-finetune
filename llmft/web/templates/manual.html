@@ -23,7 +23,7 @@
 <div class="doc-body" id="doc-body">
 <details class="doc-section" id="doc-0"><summary><span class="doc-heading">GUI usage</span></summary><div class="doc-section-body"><pre><code>python run.py web
 </code></pre>
-<p>Open <a href="http://127.0.0.1:5000">http://127.0.0.1:5000</a>. A sidebar on the left carries the six pages —
+<p>Open <a href="http://127.0.0.1:5000">http://127.0.0.1:5000</a> (or the address set in Setup). A sidebar on the left carries the six pages —
 Fine-tune, Quantize, Deploy, Environment, Setup and Documentation — and, beneath them,
 the state of the GPU: which card is present, how much of it is free, and a
 warning in amber when another application is holding most of it. That line is in
@@ -82,6 +82,14 @@ at the end of the path and press Save. The directory is created if needed and
 must be writable, otherwise the reason is shown in place. <strong>Restore the default</strong> returns to <code>out/</code>. The directory cannot be
 changed while a stage is running, since that stage would otherwise write its
 first artefacts in one place and its last in another.</p>
+<p>The <strong>Web server</strong> panel sets the IP address and port <code>python run.py web</code>
+listens on, 127.0.0.1:5000 by default. The address must be an IP address of
+this machine: 127.0.0.1 keeps the interface on this computer, 0.0.0.0 listens on
+every network interface, and a specific address listens on that interface
+only. A warning is shown for any address other machines can reach — the server
+has no authentication, reads local files and starts processes. The change
+applies the next time the web server starts; the running server keeps its
+current address. <strong>Restore the default</strong> returns to 127.0.0.1:5000.</p>
 <h3 id="documentation">Documentation</h3>
 <p>This manual is available inside the interface — the chapters below are the ones
 it carries. The search box above them opens the chapters that match and marks

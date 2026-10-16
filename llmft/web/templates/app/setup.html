@@ -5,7 +5,7 @@
 {% block content %}
 <div class="page-header">
     <h2>Setup</h2>
-    <p>Where this application writes what it produces</p>
+    <p>Where this application writes what it produces, and where its web server listens</p>
 </div>
 
 <!-- 1. INPUT -->
@@ -54,6 +54,41 @@
         <div style="margin-top: 16px;">
             <button class="btn btn-primary" id="save-btn">Save</button>
             <button class="btn" id="reset-btn">Restore the default</button>
+        </div>
+    </div>
+</div>
+
+<div class="panel">
+    <div class="panel-header">
+        <h3>Web server</h3>
+        <span class="badge badge-neutral" id="server-default-badge" style="display: none;">default</span>
+    </div>
+    <div class="panel-body">
+        <div class="form-inline">
+            <div class="form-group">
+                <label for="host-input">Listening IP address</label>
+                <input type="text" class="form-control form-control-mono" id="host-input"
+                       autocomplete="off" spellcheck="false" style="width: 260px;">
+            </div>
+            <div class="form-group">
+                <label for="port-input">Port</label>
+                <input type="number" class="form-control form-control-mono" id="port-input"
+                       min="1" max="65535" style="width: 120px;">
+            </div>
+        </div>
+        <p class="field-description">
+            127.0.0.1 keeps the interface on this machine; 0.0.0.0 listens on every network interface.
+            Changes apply the next time the web server starts (<code>python run.py web</code>).
+        </p>
+        <p class="field-description" id="server-default-hint"></p>
+        <p class="field-description" id="server-exposed-warning" style="color: var(--warning); display: none;">
+            Other machines on the network will reach this server. It has no authentication and can read
+            local files and start processes.
+        </p>
+
+        <div style="margin-top: 16px;">
+            <button class="btn btn-primary" id="server-save-btn">Save</button>
+            <button class="btn" id="server-reset-btn">Restore the default</button>
         </div>
     </div>
 </div>
