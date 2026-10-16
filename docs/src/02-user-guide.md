@@ -134,7 +134,8 @@ Shows the model directory — where checkpoints, adapters, merged models and GGU
 files are written. **Change the model directory** asks for a path, absolute or
 relative to the application directory; it is created if needed and checked for
 write access before it is accepted, so an unusable choice is refused at once
-rather than at the end of a training run. **Restore the default** returns to
+rather than at the end of a training run. Tab completes folder names as you
+type. **Restore the default** returns to
 `out/`.
 
 ## GUI usage
@@ -210,8 +211,12 @@ is not. Deployment targets are listed the same way.
 ### Setup
 
 The model directory, with the default it falls back to. Type a path and press
-Save; it is created if needed and must be writable, otherwise the reason is shown
-in place. **Restore the default** returns to `out/`. The directory cannot be
+Save, or press **Browse…** to pick a folder: the browser opens on the current
+directory, a click on a folder opens it, **Up** returns to its parent and the
+drive list switches drive. **Use this folder** saves the folder on screen. To use
+a folder that does not exist yet, browse to its parent, then type the new name
+at the end of the path and press Save. The directory is created if needed and
+must be writable, otherwise the reason is shown in place. **Restore the default** returns to `out/`. The directory cannot be
 changed while a stage is running, since that stage would otherwise write its
 first artefacts in one place and its last in another.
 

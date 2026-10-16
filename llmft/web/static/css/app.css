@@ -644,6 +644,24 @@ select.form-control[multiple] {
    ============================================================ */
 
 /* ---------- Autocomplete (§9.5) ---------- */
+/* ---------- Folder browser (Setup) ---------- */
+.folder-browser {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-tertiary);
+    padding: 12px;
+    margin-bottom: 16px;
+    max-width: 760px;
+}
+
+.folder-browser-bar { margin-bottom: 12px; align-items: center; }
+.folder-browser-path { flex: 1; min-width: 0; }
+
+/* Long listings scroll inside the panel rather than pushing the buttons away */
+.folder-browser-list { max-height: 320px; overflow-y: auto; margin-bottom: 12px; }
+
+.folder-browser-list td { font-family: var(--font-mono); font-size: 13px; padding: 8px 16px; }
+
 .autocomplete-wrapper { position: relative; }
 
 .autocomplete-dropdown {

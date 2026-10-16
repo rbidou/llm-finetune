@@ -22,9 +22,33 @@
                 under this directory, grouped by base model. It is created if it does not exist. Existing
                 artefacts are not moved: they stay where they were written.
             </p>
-            <input type="text" class="form-control form-control-mono" id="output-dir-input"
-                   autocomplete="off" spellcheck="false" style="max-width: 640px;">
+            <div class="form-inline">
+                <input type="text" class="form-control form-control-mono" id="output-dir-input"
+                       autocomplete="off" spellcheck="false" style="max-width: 640px; flex: 1;">
+                <button class="btn" id="browse-btn">Browse&hellip;</button>
+            </div>
             <p class="field-description" id="default-hint"></p>
+        </div>
+
+        {# Folders are listed by the server: a browser will not reveal the
+           absolute path of a folder picked with its own dialog. #}
+        <div id="browser" class="folder-browser" style="display: none;">
+            <div class="form-inline folder-browser-bar">
+                <select class="form-control form-control-mono" id="root-select" style="width: auto;"
+                        title="Drive"></select>
+                <button class="btn btn-sm" id="up-btn" title="Parent folder">&uarr; Up</button>
+                <span class="tech-id folder-browser-path" id="browser-path"></span>
+            </div>
+            <div class="table-scroll folder-browser-list">
+                <table class="data-table" style="margin-bottom: 0;">
+                    <tbody id="browser-body"></tbody>
+                </table>
+            </div>
+            <p class="field-description" id="browser-error" style="color: var(--danger);"></p>
+            <div class="form-inline">
+                <button class="btn btn-primary" id="choose-btn">Use this folder</button>
+                <button class="btn" id="cancel-btn">Cancel</button>
+            </div>
         </div>
 
         <div style="margin-top: 16px;">

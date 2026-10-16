@@ -36,6 +36,7 @@ from llmft.config import (
 )
 from llmft.dataset import DatasetReport, validate_dataset
 from llmft.environment import detect, features
+from llmft.folders import FolderError, FolderListing, list_folder
 from llmft.estimator import ModelShape, check_fit, format_bytes
 from llmft.hub import HubError, fetch_config, fetch_parameter_count, local_models, search_models
 from llmft.paths import (
@@ -231,6 +232,36 @@ def api_settings_save(json_data: dict[str, Any]) -> dict[str, Any] | tuple[dict[
             data = _settings_payload()
 
     return make_api_response(result, message, data, status_code, reflect)
+
+
+@api.get("/folders")
+def api_folders() -> dict[str, Any] | tuple[dict[str, Any], int]:
+    """The subfolders of a directory, for the Setup page's directory browser.
+
+    Without a path, the browser opens on the current model directory.
+    """
+    (result, message, data, status_code, reflect) = (True, "", {}, 200, True)
+
+    try:
+        listing = list_folder(request.args.get("path", "") or str(output_root()))
+    except FolderError as error:
+        result = False
+        message = str(error)
+        status_code = HTTP_UNPROCESSABLE
+    else:
+        data = _folders_payload(listing)
+
+    return make_api_response(result, message, data, status_code, reflect)
+
+
+def _folders_payload(listing: FolderListing) -> dict[str, Any]:
+    """Describe one folder listing for the directory browser."""
+    return {
+        "path": str(listing.path),
+        "parent": str(listing.parent) if listing.parent else None,
+        "folders": [{"name": folder.name, "path": str(folder)} for folder in listing.folders],
+        "roots": [str(root) for root in listing.roots],
+    }
 
 
 def _settings_payload() -> dict[str, Any]:

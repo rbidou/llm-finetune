@@ -19,6 +19,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable, Sequence
 
+from prompt_toolkit.completion import PathCompleter
 from rich.table import Table
 from rich.text import Text
 
@@ -504,7 +505,10 @@ def run_setup(ui: Ui, capabilities: Capabilities) -> None:
 def _change_output_root(ui: Ui, value: str | None) -> None:
     """Store a new model directory, asking for it unless ``value`` is given."""
     ui.goto(SETUP, "Model Directory")
-    raw = value if value is not None else ui.ask("Model directory", default=str(output_root()))
+    if value is None and ui.supports_completion:
+        ui.hint("Press Tab to complete folder names.")
+    completer = PathCompleter(only_directories=True, expanduser=True) if ui.supports_completion else None
+    raw = value if value is not None else ui.ask("Model directory", default=str(output_root()), completer=completer)
     try:
         target = set_output_root(raw)
     except OutputDirError as error:
