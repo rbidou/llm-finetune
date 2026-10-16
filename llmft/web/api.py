@@ -38,7 +38,18 @@ from llmft.dataset import DatasetReport, validate_dataset
 from llmft.environment import detect, features
 from llmft.estimator import ModelShape, check_fit, format_bytes
 from llmft.hub import HubError, fetch_config, fetch_parameter_count, local_models, search_models
-from llmft.paths import ADAPTER_SUBDIR, GGUF_SUBDIR, MERGED_SUBDIR, OUT_DIR, ensure_dir, merged_dir, model_name
+from llmft.paths import (
+    ADAPTER_SUBDIR,
+    DEFAULT_OUT_DIR,
+    GGUF_SUBDIR,
+    MERGED_SUBDIR,
+    OutputDirError,
+    ensure_dir,
+    merged_dir,
+    model_name,
+    output_root,
+    set_output_root,
+)
 from llmft.pipeline import (
     available_targets,
     deploy_to_lm_studio,
@@ -157,7 +168,7 @@ def api_models_local() -> dict[str, Any] | tuple[dict[str, Any], int]:
 @api.get("/models/merged")
 def api_models_merged() -> dict[str, Any]:
     """Models that have been merged and are ready to quantize."""
-    found = sorted(_model_id_from_artefact(path) for path in OUT_DIR.glob(f"**/{MERGED_SUBDIR}"))
+    found = sorted(_model_id_from_artefact(path) for path in output_root().glob(f"**/{MERGED_SUBDIR}"))
     data = {"models": [{"modelId": name, "sizeOnDisk": _directory_size(merged_dir(name))} for name in found]}
 
     return make_api_response(data=data)
@@ -166,7 +177,7 @@ def api_models_merged() -> dict[str, Any]:
 @api.get("/models/gguf")
 def api_models_gguf() -> dict[str, Any]:
     """Every GGUF this application has produced, newest first."""
-    found = sorted(OUT_DIR.glob(f"**/{GGUF_SUBDIR}/*.gguf"), key=lambda path: -path.stat().st_mtime)
+    found = sorted(output_root().glob(f"**/{GGUF_SUBDIR}/*.gguf"), key=lambda path: -path.stat().st_mtime)
     data = {"files": [_gguf_payload(path) for path in found]}
 
     return make_api_response(data=data)
@@ -181,6 +192,54 @@ def _gguf_payload(path: Path) -> dict[str, Any]:
         "sizeOnDisk": path.stat().st_size,
         "modelId": model_id,
         "quantType": _quant_type_from_gguf(path, model_id),
+    }
+
+
+# --- settings --------------------------------------------------------------
+
+
+@api.get("/settings")
+def api_settings() -> dict[str, Any]:
+    """The application settings, with the defaults they fall back to."""
+    return make_api_response(data=_settings_payload())
+
+
+@api.post("/settings")
+@check_json_data
+def api_settings_save(json_data: dict[str, Any]) -> dict[str, Any] | tuple[dict[str, Any], int]:
+    """Store a new model directory; an empty one restores the default.
+
+    Refused while a stage runs: it would write its first artefacts in one
+    directory and its last in another.
+    """
+    (result, message, data, status_code, reflect) = (True, "", {}, 200, True)
+
+    job = current_app.extensions["llmft_jobs"].current
+
+    if job is not None and not job.finished:
+        result = False
+        message = f"A {job.kind} job is running. Change the model directory once it has finished."
+        status_code = HTTP_CONFLICT
+    else:
+        try:
+            set_output_root(str(json_data.get("outputDir", "")))
+        except OutputDirError as error:
+            result = False
+            message = str(error)
+            status_code = HTTP_UNPROCESSABLE
+        else:
+            data = _settings_payload()
+
+    return make_api_response(result, message, data, status_code, reflect)
+
+
+def _settings_payload() -> dict[str, Any]:
+    """Describe the current settings for the Setup page."""
+    current = output_root()
+    return {
+        "outputDir": str(current),
+        "defaultOutputDir": str(DEFAULT_OUT_DIR),
+        "isDefault": current == DEFAULT_OUT_DIR,
     }
 
 
@@ -524,8 +583,8 @@ def _default_name(gguf: Path, model_id: str, quant_type: str) -> str:
 
 
 def _model_id_from_artefact(path: Path) -> str:
-    """Recover the model identifier from an artefact path under ``out/``."""
-    parts = path.relative_to(OUT_DIR).parts
+    """Recover the model identifier from an artefact path under the output root."""
+    parts = path.relative_to(output_root()).parts
     boundary = next(
         (index for index, part in enumerate(parts) if part in {MERGED_SUBDIR, GGUF_SUBDIR, ADAPTER_SUBDIR}),
         len(parts),

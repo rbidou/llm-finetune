@@ -1,0 +1,51 @@
+{% extends "app/base.html" %}
+{% set active_page = 'setup' %}
+{% block title %}LLM Finetune - Setup{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Setup</h2>
+    <p>Where this application writes what it produces</p>
+</div>
+
+<!-- 1. INPUT -->
+<div class="panel">
+    <div class="panel-header">
+        <h3>Model directory</h3>
+        <span class="badge badge-neutral" id="default-badge" style="display: none;">default</span>
+    </div>
+    <div class="panel-body">
+        <div class="form-group">
+            <label for="output-dir-input">Directory</label>
+            <p class="field-description">
+                Training checkpoints, LoRA adapters, merged models and quantized GGUF files are all written
+                under this directory, grouped by base model. It is created if it does not exist. Existing
+                artefacts are not moved: they stay where they were written.
+            </p>
+            <input type="text" class="form-control form-control-mono" id="output-dir-input"
+                   autocomplete="off" spellcheck="false" style="max-width: 640px;">
+            <p class="field-description" id="default-hint"></p>
+        </div>
+
+        <div style="margin-top: 16px;">
+            <button class="btn btn-primary" id="save-btn">Save</button>
+            <button class="btn" id="reset-btn">Restore the default</button>
+        </div>
+    </div>
+</div>
+
+<!-- 2. ERROR -->
+<div id="error-section" style="display: none;">
+    <div class="panel">
+        <div class="panel-body">
+            <div class="empty-state">
+                <p id="error-message" style="color: var(--danger);"></p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/setup.js') }}"></script>
+{% endblock %}

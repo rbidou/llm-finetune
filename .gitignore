@@ -11,3 +11,4 @@ configs/
 .pytest_cache/
 tasks/
 tests/
+settings.json

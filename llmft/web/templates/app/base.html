@@ -38,6 +38,11 @@
                 <span class="nav-icon">&#9881;</span>
                 <span class="nav-label">Environment</span>
             </a>
+            <a href="{{ url_for('page_setup') }}"
+               class="{% if active_page == 'setup' %}active{% endif %}">
+                <span class="nav-icon">&#9998;</span>
+                <span class="nav-label">Setup</span>
+            </a>
             <a href="{{ url_for('page_documentation') }}"
                class="{% if active_page == 'documentation' %}active{% endif %}">
                 <span class="nav-icon">&#128196;</span>

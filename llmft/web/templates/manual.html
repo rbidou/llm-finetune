@@ -23,8 +23,8 @@
 <div class="doc-body" id="doc-body">
 <details class="doc-section" id="doc-0"><summary><span class="doc-heading">GUI usage</span></summary><div class="doc-section-body"><pre><code>python run.py web
 </code></pre>
-<p>Open <a href="http://127.0.0.1:5000">http://127.0.0.1:5000</a>. A sidebar on the left carries the five pages —
-Fine-tune, Quantize, Deploy, Environment and Documentation — and, beneath them,
+<p>Open <a href="http://127.0.0.1:5000">http://127.0.0.1:5000</a>. A sidebar on the left carries the six pages —
+Fine-tune, Quantize, Deploy, Environment, Setup and Documentation — and, beneath them,
 the state of the GPU: which card is present, how much of it is free, and a
 warning in amber when another application is holding most of it. That line is in
 the sidebar rather than on a page because it applies to all of them.</p>
@@ -72,6 +72,12 @@ deployment finishes, the command that runs the model is shown ready to copy.</p>
 <p>The same report as <code>python run.py check</code>: the card and its memory as headline
 figures, then every operation, whether it is available, and the reason when it
 is not. Deployment targets are listed the same way.</p>
+<h3 id="setup">Setup</h3>
+<p>The model directory, with the default it falls back to. Type a path and press
+Save; it is created if needed and must be writable, otherwise the reason is shown
+in place. <strong>Restore the default</strong> returns to <code>out/</code>. The directory cannot be
+changed while a stage is running, since that stage would otherwise write its
+first artefacts in one place and its last in another.</p>
 <h3 id="documentation">Documentation</h3>
 <p>This manual is available inside the interface — the chapters below are the ones
 it carries. The search box above them opens the chapters that match and marks

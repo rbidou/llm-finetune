@@ -42,7 +42,17 @@ from llmft.dataset import DatasetReport, validate_dataset
 from llmft.environment import Capabilities, detect, features
 from llmft.estimator import ModelShape, Verdict, check_fit, format_bytes
 from llmft.hub import HubError, fetch_config, fetch_parameter_count, local_models
-from llmft.paths import ADAPTER_SUBDIR, GGUF_SUBDIR, MERGED_SUBDIR, OUT_DIR, merged_dir, model_name
+from llmft.paths import (
+    ADAPTER_SUBDIR,
+    DEFAULT_OUT_DIR,
+    GGUF_SUBDIR,
+    MERGED_SUBDIR,
+    OutputDirError,
+    merged_dir,
+    model_name,
+    output_root,
+    set_output_root,
+)
 from llmft.pipeline import (
     DeploymentError,
     MergeError,
@@ -62,6 +72,7 @@ FINETUNE = "Fine-Tune"
 QUANTIZE = "Quantize"
 DEPLOY = "Deploy"
 ENVIRONMENT = "Environment"
+SETUP = "Setup"
 
 MAX_ISSUES_SHOWN = 12
 CONTINUE_PROMPT = "Press Enter to continue"
@@ -363,9 +374,9 @@ def run_quantize(ui: Ui, capabilities: Capabilities) -> None:
 def _step_pick_merged(ui: Ui, state: FlowState, capabilities: Capabilities) -> None:
     """List models that have been merged and are ready to quantize."""
     ui.goto(QUANTIZE, "Model Selection")
-    found = sorted(_model_id_from_artefact(path) for path in OUT_DIR.glob(f"**/{MERGED_SUBDIR}"))
+    found = sorted(_model_id_from_artefact(path) for path in output_root().glob(f"**/{MERGED_SUBDIR}"))
     if not found:
-        ui.warn(f"No merged models under {OUT_DIR}. Fine-tune one first.")
+        ui.warn(f"No merged models under {output_root()}. Fine-tune one first.")
         _acknowledge(ui, "")
         raise GoBack
     state.model_id = ui.choose([Choice(name, name, _size_of(merged_dir(name))) for name in found]).key
@@ -401,7 +412,7 @@ def _step_pick_gguf(ui: Ui, state: FlowState, capabilities: Capabilities) -> Non
     ui.goto(DEPLOY, "Model Selection")
     found = _find_gguf_files()
     if not found:
-        ui.warn(f"No GGUF files under {OUT_DIR}. Quantize a model first.")
+        ui.warn(f"No GGUF files under {output_root()}. Quantize a model first.")
         _acknowledge(ui, "")
         raise GoBack
     picked = ui.choose([Choice(str(path), path.name, _size_of(path)) for path in found])
@@ -468,11 +479,47 @@ def show_environment(ui: Ui, capabilities: Capabilities) -> None:
     _acknowledge(ui, "")
 
 
+# --- setup -----------------------------------------------------------------
+
+
+def run_setup(ui: Ui, capabilities: Capabilities) -> None:
+    """Show the application settings and let the user change them."""
+    while True:
+        ui.goto(SETUP)
+        current = output_root()
+        rows = [("Model directory", str(current), "checkpoints, merged models and GGUF files")]
+        action = ui.choose(
+            [
+                Choice("output", "Change the model directory"),
+                Choice(
+                    "reset", "Restore the default", str(DEFAULT_OUT_DIR), current != DEFAULT_OUT_DIR, "Already the default."
+                ),
+            ],
+            ui.table(("Setting", "Value", "Holds"), rows, title="Settings"),
+            Text.from_markup("[dim]Existing artefacts are not moved: they stay where they were written.[/]"),
+        )
+        _change_output_root(ui, "" if action.key == "reset" else None)
+
+
+def _change_output_root(ui: Ui, value: str | None) -> None:
+    """Store a new model directory, asking for it unless ``value`` is given."""
+    ui.goto(SETUP, "Model Directory")
+    raw = value if value is not None else ui.ask("Model directory", default=str(output_root()))
+    try:
+        target = set_output_root(raw)
+    except OutputDirError as error:
+        ui.error(str(error))
+    else:
+        ui.success(f"Models will be written under {target}")
+    _acknowledge(ui, "")
+
+
 _FLOWS: dict[str, Callable[[Ui, Capabilities], None]] = {
     "finetune": run_finetune,
     "quantize": run_quantize,
     "deploy": run_deploy,
     "check": show_environment,
+    "setup": run_setup,
 }
 
 
@@ -486,6 +533,7 @@ def _main_menu(capabilities: Capabilities) -> list[Choice]:
         Choice("quantize", "Quantize a merged model", "to GGUF", quant.available, quant.reason),
         Choice("deploy", "Deploy a quantized model", "", can_deploy, "No local model runner is installed."),
         Choice("check", "Show environment details"),
+        Choice("setup", "Setup", "model directory"),
         Choice("quit", "Quit"),
     ]
 
@@ -499,17 +547,17 @@ def _acknowledge(ui: Ui, message: str) -> None:
 
 def _find_gguf_files() -> list[Path]:
     """Every GGUF this application has produced, newest first."""
-    return sorted(OUT_DIR.glob(f"**/{GGUF_SUBDIR}/*.gguf"), key=lambda path: -path.stat().st_mtime)
+    return sorted(output_root().glob(f"**/{GGUF_SUBDIR}/*.gguf"), key=lambda path: -path.stat().st_mtime)
 
 
 def _model_id_from_artefact(path: Path) -> str:
-    """Recover the model identifier from an artefact path under ``out/``.
+    """Recover the model identifier from an artefact path under the output root.
 
     Artefacts live at ``out/<model_id>/<kind>/...`` and a model identifier may
     or may not carry an organisation, so the identifier is whatever sits between
     the output root and the artefact directory rather than a fixed depth.
     """
-    parts = path.relative_to(OUT_DIR).parts
+    parts = path.relative_to(output_root()).parts
     boundary = next(
         (index for index, part in enumerate(parts) if part in {MERGED_SUBDIR, GGUF_SUBDIR, ADAPTER_SUBDIR}),
         len(parts),

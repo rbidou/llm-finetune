@@ -72,6 +72,11 @@ def create_app() -> Flask:
         """Render the Environment page."""
         return render_template("app/environment.html")
 
+    @app.get("/setup")
+    def page_setup() -> str:
+        """Render the Setup page."""
+        return render_template("app/setup.html")
+
     @app.get("/documentation")
     def page_documentation() -> str:
         """Render the online subset of the manual.

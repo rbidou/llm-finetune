@@ -86,6 +86,12 @@ Table: Where artefacts are written
 Model identifiers keep their `organisation/name` shape, so artefacts group
 naturally by publisher.
 
+`out/` is the default model directory. It can be moved — to a larger disk, say —
+from the Setup menu in either interface; the choice is stored in `settings.json`
+in the application directory and applies to the CLI and the browser alike.
+Changing it does not move artefacts already written: they stay where they are,
+and the Quantize and Deploy lists only show what is under the current directory.
+
 ## CLI usage
 
 The screen has four parts: a header, a trail showing the current step and the
@@ -122,14 +128,23 @@ every GGUF. Producing a k-quant writes an intermediate f16 file, which is kept
 because f16 is itself a valid output and a later k-quant of the same model then
 reuses it instead of converting again.
 
+### Setup
+
+Shows the model directory — where checkpoints, adapters, merged models and GGUF
+files are written. **Change the model directory** asks for a path, absolute or
+relative to the application directory; it is created if needed and checked for
+write access before it is accepted, so an unusable choice is refused at once
+rather than at the end of a training run. **Restore the default** returns to
+`out/`.
+
 ## GUI usage
 
 ```
 python run.py web
 ```
 
-Open <http://127.0.0.1:5000>. A sidebar on the left carries the five pages —
-Fine-tune, Quantize, Deploy, Environment and Documentation — and, beneath them,
+Open <http://127.0.0.1:5000>. A sidebar on the left carries the six pages —
+Fine-tune, Quantize, Deploy, Environment, Setup and Documentation — and, beneath them,
 the state of the GPU: which card is present, how much of it is free, and a
 warning in amber when another application is holding most of it. That line is in
 the sidebar rather than on a page because it applies to all of them.
@@ -191,6 +206,14 @@ deployment finishes, the command that runs the model is shown ready to copy.
 The same report as `python run.py check`: the card and its memory as headline
 figures, then every operation, whether it is available, and the reason when it
 is not. Deployment targets are listed the same way.
+
+### Setup
+
+The model directory, with the default it falls back to. Type a path and press
+Save; it is created if needed and must be writable, otherwise the reason is shown
+in place. **Restore the default** returns to `out/`. The directory cannot be
+changed while a stage is running, since that stage would otherwise write its
+first artefacts in one place and its last in another.
 
 ### Documentation
 
