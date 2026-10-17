@@ -29,6 +29,17 @@
             <p class="field-description" id="type-explanation"></p>
         </div>
 
+        <div class="form-group">
+            <label for="name-input">Model name</label>
+            <p class="field-description">
+                Names the quantized model: its file and the name recorded inside it. Defaults to the
+                original model's name. Letters, digits, '.', '-' and '_'.
+            </p>
+            <input type="text" class="form-control form-control-mono" id="name-input"
+                   autocomplete="off" spellcheck="false" style="max-width: 420px;">
+            <p class="field-description" id="name-preview"></p>
+        </div>
+
         <div style="margin-top: 16px;">
             <button class="btn btn-primary" id="run-btn">Quantize</button>
         </div>

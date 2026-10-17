@@ -14,6 +14,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from llmft.config import split_gguf_stem
 from llmft.environment import Capabilities, find_lms, find_ollama
 from llmft.process import ProcessError, run_streaming
 from llmft.progress import ProgressSink, Stage, null_sink, report
@@ -140,6 +141,16 @@ def ollama_name(name: str) -> str:
 def suggested_name(model_id: str, quant_type: str) -> str:
     """Propose a runner name from the model and its quantization."""
     return ollama_name(f"{model_id.rsplit('/', maxsplit=1)[-1]}:{quant_type}")
+
+
+def name_for_gguf(gguf: Path) -> str:
+    """Propose a runner name for a GGUF file from its own name and type.
+
+    Read from the file rather than from the base model, so a quantized model
+    the user renamed is proposed under the name they gave it.
+    """
+    name, quant_type = split_gguf_stem(gguf.stem)
+    return suggested_name(name, quant_type) if quant_type else ollama_name(gguf.stem)
 
 
 def _require(key: str) -> Path:

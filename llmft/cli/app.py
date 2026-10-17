@@ -36,6 +36,7 @@ from llmft.config import (
     available_quant_types,
     describe,
     list_presets,
+    split_gguf_stem,
     load_preset,
     save_preset,
 )
@@ -45,14 +46,22 @@ from llmft.estimator import ModelShape, Verdict, check_fit, format_bytes
 from llmft.hub import HubError, fetch_config, fetch_parameter_count, local_models
 from llmft.paths import (
     ADAPTER_SUBDIR,
-    DEFAULT_OUT_DIR,
-    GGUF_SUBDIR,
     MERGED_SUBDIR,
-    OutputDirError,
+    MODEL_DIRECTORY,
+    OUTPUT_MODEL_DIRECTORY,
+    DirectoryError,
+    DirectorySetting,
+    InvalidNameError,
+    find_gguf_files,
+    gguf_file,
     merged_dir,
+    model_id_from_gguf,
     model_name,
-    output_root,
-    set_output_root,
+    model_root,
+    output_model_root,
+    set_directory,
+    stored_directory,
+    validated_gguf_name,
 )
 from llmft.pipeline import (
     DeploymentError,
@@ -62,9 +71,8 @@ from llmft.pipeline import (
     available_targets,
     deploy_to_lm_studio,
     deploy_to_ollama,
-    ollama_name,
+    name_for_gguf,
     quantize,
-    suggested_name,
     train_and_merge,
 )
 from llmft.server_address import ServerAddressError, server_address, set_server_address
@@ -92,6 +100,7 @@ class FlowState:
     lora: LoraSettings = field(default_factory=LoraSettings)
     sft: SftSettings = field(default_factory=SftSettings)
     quant_type: str = ""
+    gguf_name: str = ""
     gguf: Path | None = None
     runner: str = ""
 
@@ -362,7 +371,8 @@ def _step_train(ui: Ui, state: FlowState, capabilities: Capabilities) -> None:
         merged = train_and_merge(state.model_id, state.dataset, state.lora, state.sft, sink=sink)
     ui.success(f"Merged model written to {merged}")
     if ui.confirm("Quantize it now?", default=True):
-        _run_steps(ui, (_step_quant_type, _step_quantize), replace(state, quant_type=""), capabilities)
+        steps = (_step_quant_type, _step_gguf_name, _step_quantize)
+        _run_steps(ui, steps, replace(state, quant_type="", gguf_name=""), capabilities)
 
 
 # --- quantize --------------------------------------------------------------
@@ -370,15 +380,16 @@ def _step_train(ui: Ui, state: FlowState, capabilities: Capabilities) -> None:
 
 def run_quantize(ui: Ui, capabilities: Capabilities) -> None:
     """Quantize any merged model, including one from an earlier session."""
-    _run_steps(ui, (_step_pick_merged, _step_quant_type, _step_quantize), FlowState(), capabilities)
+    steps = (_step_pick_merged, _step_quant_type, _step_gguf_name, _step_quantize)
+    _run_steps(ui, steps, FlowState(), capabilities)
 
 
 def _step_pick_merged(ui: Ui, state: FlowState, capabilities: Capabilities) -> None:
     """List models that have been merged and are ready to quantize."""
     ui.goto(QUANTIZE, "Model Selection")
-    found = sorted(_model_id_from_artefact(path) for path in output_root().glob(f"**/{MERGED_SUBDIR}"))
+    found = sorted(_model_id_from_artefact(path) for path in model_root().glob(f"**/{MERGED_SUBDIR}"))
     if not found:
-        ui.warn(f"No merged models under {output_root()}. Fine-tune one first.")
+        ui.warn(f"No merged models under {model_root()}. Fine-tune one first.")
         _acknowledge(ui, "")
         raise GoBack
     state.model_id = ui.choose([Choice(name, name, _size_of(merged_dir(name))) for name in found]).key
@@ -392,10 +403,27 @@ def _step_quant_type(ui: Ui, state: FlowState, capabilities: Capabilities) -> No
     state.quant_type = ui.choose([Choice(item.name, item.label, item.explanation) for item in offered]).key
 
 
+def _step_gguf_name(ui: Ui, state: FlowState, capabilities: Capabilities) -> None:
+    """Name the quantized model, proposing the original model's name.
+
+    Asked here, before the progress bar, because nothing may be asked under it.
+    """
+    ui.goto(QUANTIZE, "Quantization Type", "Model Name")
+    default = state.gguf_name or model_name(state.model_id)
+    ui.hint(f"Written as <name>-{state.quant_type}.gguf in {gguf_file(state.model_id, state.quant_type).parent}")
+    while True:
+        try:
+            state.gguf_name = validated_gguf_name(ui.ask("Model name", default=default))
+        except InvalidNameError as error:
+            ui.error(str(error))
+        else:
+            return
+
+
 def _step_quantize(ui: Ui, state: FlowState, capabilities: Capabilities) -> None:
     """Produce the GGUF, then offer to deploy it."""
-    with ui.progress(QUANTIZE, "Quantization Type", state.quant_type) as sink:
-        state.gguf = quantize(state.model_id, state.quant_type, sink=sink)
+    with ui.progress(QUANTIZE, "Model Name", f"{state.gguf_name}-{state.quant_type}") as sink:
+        state.gguf = quantize(state.model_id, state.quant_type, sink=sink, name=state.gguf_name)
     ui.success(f"Wrote {state.gguf}")
     if ui.confirm("Deploy it now?", default=False):
         _run_steps(ui, (_step_pick_runner, _step_deploy), state, capabilities)
@@ -412,15 +440,15 @@ def run_deploy(ui: Ui, capabilities: Capabilities) -> None:
 def _step_pick_gguf(ui: Ui, state: FlowState, capabilities: Capabilities) -> None:
     """List every GGUF this application has produced."""
     ui.goto(DEPLOY, "Model Selection")
-    found = _find_gguf_files()
+    found = find_gguf_files()
     if not found:
-        ui.warn(f"No GGUF files under {output_root()}. Quantize a model first.")
+        ui.warn(f"No GGUF files under {output_model_root()}. Quantize a model first.")
         _acknowledge(ui, "")
         raise GoBack
     picked = ui.choose([Choice(str(path), path.name, _size_of(path)) for path in found])
     state.gguf = Path(picked.key)
-    state.model_id = _model_id_from_artefact(state.gguf)
-    state.quant_type = _quant_type_from_gguf(state.gguf, state.model_id)
+    state.model_id = model_id_from_gguf(state.gguf)
+    state.quant_type = split_gguf_stem(state.gguf.stem)[1]
 
 
 def _step_pick_runner(ui: Ui, state: FlowState, capabilities: Capabilities) -> None:
@@ -443,11 +471,7 @@ def _step_deploy(ui: Ui, state: FlowState, capabilities: Capabilities) -> None:
     name = ""
     if state.runner == "ollama":
         ui.goto(DEPLOY, "Target", "Name")
-        default = (
-            suggested_name(state.model_id, state.quant_type)
-            if state.model_id and state.quant_type
-            else ollama_name(gguf.stem)
-        )
+        default = name_for_gguf(gguf)
         name = ui.ask("Name in Ollama", default=default) or default
 
     with ui.progress(DEPLOY, "Target", gguf.name) as sink:
@@ -488,18 +512,14 @@ def run_setup(ui: Ui, capabilities: Capabilities) -> None:
     """Show the application settings and let the user change them."""
     while True:
         ui.goto(SETUP)
-        current = output_root()
         address = server_address()
         rows = [
-            ("Model directory", str(current), "checkpoints, merged models and GGUF files"),
+            *((setting.label, str(stored_directory(setting)), setting.holds) for setting in _DIRECTORIES.values()),
             ("Web server address", f"{address.host}:{address.port}", "where 'python run.py web' listens"),
         ]
         action = ui.choose(
             [
-                Choice("output", "Change the model directory"),
-                Choice(
-                    "reset", "Restore the default", str(DEFAULT_OUT_DIR), current != DEFAULT_OUT_DIR, "Already the default."
-                ),
+                *(choice for key, setting in _DIRECTORIES.items() for choice in _directory_choices(key, setting)),
                 Choice("server", "Change the web server address"),
                 Choice("server_reset", "Restore the default address", "", not address.is_default, "Already the default."),
             ],
@@ -510,19 +530,28 @@ def run_setup(ui: Ui, capabilities: Capabilities) -> None:
         _SETUP_ACTIONS[action.key](ui)
 
 
-def _change_output_root(ui: Ui, value: str | None) -> None:
-    """Store a new model directory, asking for it unless ``value`` is given."""
-    ui.goto(SETUP, "Model Directory")
-    if value is None and ui.supports_completion:
-        ui.hint("Press Tab to complete folder names.")
+def _directory_choices(key: str, setting: DirectorySetting) -> tuple[Choice, Choice]:
+    """The change and restore options for one directory setting."""
+    is_default = stored_directory(setting) == setting.default
+    return (
+        Choice(key, f"Change the {setting.label.lower()}"),
+        Choice(f"{key}_reset", "Restore the default", str(setting.default), not is_default, "Already the default."),
+    )
+
+
+def _change_directory(ui: Ui, setting: DirectorySetting, reset: bool = False) -> None:
+    """Store a new directory for ``setting``, asking for it unless ``reset`` is set."""
+    ui.goto(SETUP, setting.label.title())
     completer = PathCompleter(only_directories=True, expanduser=True) if ui.supports_completion else None
-    raw = value if value is not None else ui.ask("Model directory", default=str(output_root()), completer=completer)
+    if not reset and completer:
+        ui.hint("Press Tab to complete folder names.")
+    raw = "" if reset else ui.ask(setting.label, default=str(stored_directory(setting)), completer=completer)
     try:
-        target = set_output_root(raw)
-    except OutputDirError as error:
+        target = set_directory(setting, raw)
+    except DirectoryError as error:
         ui.error(str(error))
     else:
-        ui.success(f"Models will be written under {target}")
+        ui.success(f"{setting.holds[:1].upper()}{setting.holds[1:]} will be written under {target}")
     _acknowledge(ui, "")
 
 
@@ -545,9 +574,14 @@ def _change_server_address(ui: Ui, reset: bool = False) -> None:
     _acknowledge(ui, "")
 
 
+_DIRECTORIES: dict[str, DirectorySetting] = {"model": MODEL_DIRECTORY, "output": OUTPUT_MODEL_DIRECTORY}
+
 _SETUP_ACTIONS: dict[str, Callable[[Ui], None]] = {
-    "output": lambda ui: _change_output_root(ui, None),
-    "reset": lambda ui: _change_output_root(ui, ""),
+    **{key: (lambda ui, setting=setting: _change_directory(ui, setting)) for key, setting in _DIRECTORIES.items()},
+    **{
+        f"{key}_reset": (lambda ui, setting=setting: _change_directory(ui, setting, reset=True))
+        for key, setting in _DIRECTORIES.items()
+    },
     "server": _change_server_address,
     "server_reset": lambda ui: _change_server_address(ui, reset=True),
 }
@@ -572,7 +606,7 @@ def _main_menu(capabilities: Capabilities) -> list[Choice]:
         Choice("quantize", "Quantize a merged model", "to GGUF", quant.available, quant.reason),
         Choice("deploy", "Deploy a quantized model", "", can_deploy, "No local model runner is installed."),
         Choice("check", "Show environment details"),
-        Choice("setup", "Setup", "model directory, web server address"),
+        Choice("setup", "Setup", "model directories, web server address"),
         Choice("quit", "Quit"),
     ]
 
@@ -584,30 +618,20 @@ def _acknowledge(ui: Ui, message: str) -> None:
     ui.read(f"{CONTINUE_PROMPT}: ")
 
 
-def _find_gguf_files() -> list[Path]:
-    """Every GGUF this application has produced, newest first."""
-    return sorted(output_root().glob(f"**/{GGUF_SUBDIR}/*.gguf"), key=lambda path: -path.stat().st_mtime)
-
-
 def _model_id_from_artefact(path: Path) -> str:
-    """Recover the model identifier from an artefact path under the output root.
+    """Recover the model identifier from an artefact path under the model directory.
 
-    Artefacts live at ``out/<model_id>/<kind>/...`` and a model identifier may
-    or may not carry an organisation, so the identifier is whatever sits between
-    the output root and the artefact directory rather than a fixed depth.
+    Artefacts live at ``<model dir>/<model_id>/<kind>/...`` and a model
+    identifier may or may not carry an organisation, so the identifier is
+    whatever sits between the root and the artefact directory rather than a
+    fixed depth.
     """
-    parts = path.relative_to(output_root()).parts
+    parts = path.relative_to(model_root()).parts
     boundary = next(
-        (index for index, part in enumerate(parts) if part in {MERGED_SUBDIR, GGUF_SUBDIR, ADAPTER_SUBDIR}),
+        (index for index, part in enumerate(parts) if part in {MERGED_SUBDIR, ADAPTER_SUBDIR}),
         len(parts),
     )
     return "/".join(parts[:boundary])
-
-
-def _quant_type_from_gguf(path: Path, model_id: str) -> str:
-    """Read the quantization type back out of a produced filename."""
-    prefix = f"{model_name(model_id)}-" if model_id else ""
-    return path.stem[len(prefix):] if prefix and path.stem.startswith(prefix) else ""
 
 
 def _all_specs(lora: LoraSettings, sft: SftSettings) -> list[tuple[ParamSpec, object]]:

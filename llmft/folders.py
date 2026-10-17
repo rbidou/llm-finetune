@@ -54,8 +54,12 @@ def filesystem_roots() -> tuple[Path, ...]:
 
 
 def _nearest_existing(path: Path) -> Path:
-    """Return ``path`` if it is a directory, else its closest directory ancestor."""
-    return next((candidate for candidate in (path, *path.parents) if candidate.is_dir()), Path(path.anchor))
+    """Return ``path`` if it is a directory, else its closest directory ancestor.
+
+    A path on a drive that is not there at all -- the default output directory
+    on a machine without a ``D:`` drive -- opens on the home folder instead.
+    """
+    return next((candidate for candidate in (path, *path.parents) if candidate.is_dir()), Path.home())
 
 
 def _is_visible_folder(entry: os.DirEntry) -> bool:

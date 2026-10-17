@@ -31,6 +31,7 @@ from llmft.config import (
     available_quant_types,
     describe,
     list_presets,
+    split_gguf_stem,
     load_preset,
     save_preset,
 )
@@ -41,23 +42,29 @@ from llmft.estimator import ModelShape, check_fit, format_bytes
 from llmft.hub import HubError, fetch_config, fetch_parameter_count, local_models, search_models
 from llmft.paths import (
     ADAPTER_SUBDIR,
-    DEFAULT_OUT_DIR,
-    GGUF_SUBDIR,
     MERGED_SUBDIR,
-    OutputDirError,
+    MODEL_DIRECTORY,
+    OUTPUT_MODEL_DIRECTORY,
+    DirectoryError,
+    DirectorySetting,
+    InvalidModelIdError,
+    InvalidNameError,
     ensure_dir,
+    find_gguf_files,
     merged_dir,
+    model_id_from_gguf,
     model_name,
-    output_root,
-    set_output_root,
+    model_root,
+    set_directory,
+    stored_directory,
+    validated_gguf_name,
 )
 from llmft.pipeline import (
     available_targets,
     deploy_to_lm_studio,
     deploy_to_ollama,
-    ollama_name,
+    name_for_gguf,
     quantize,
-    suggested_name,
     train_and_merge,
 )
 from llmft.progress import ProgressEvent
@@ -80,6 +87,9 @@ HTTP_UNPROCESSABLE = 422
 HTTP_BAD_GATEWAY = 502
 
 api = Blueprint("api", __name__, url_prefix="/api")
+
+# The directory settings the Setup page edits, keyed as they appear in its URLs.
+DIRECTORIES: dict[str, DirectorySetting] = {"model": MODEL_DIRECTORY, "output": OUTPUT_MODEL_DIRECTORY}
 
 
 # --- environment -----------------------------------------------------------
@@ -170,7 +180,7 @@ def api_models_local() -> dict[str, Any] | tuple[dict[str, Any], int]:
 @api.get("/models/merged")
 def api_models_merged() -> dict[str, Any]:
     """Models that have been merged and are ready to quantize."""
-    found = sorted(_model_id_from_artefact(path) for path in output_root().glob(f"**/{MERGED_SUBDIR}"))
+    found = sorted(_model_id_from_artefact(path) for path in model_root().glob(f"**/{MERGED_SUBDIR}"))
     data = {"models": [{"modelId": name, "sizeOnDisk": _directory_size(merged_dir(name))} for name in found]}
 
     return make_api_response(data=data)
@@ -178,22 +188,21 @@ def api_models_merged() -> dict[str, Any]:
 
 @api.get("/models/gguf")
 def api_models_gguf() -> dict[str, Any]:
-    """Every GGUF this application has produced, newest first."""
-    found = sorted(output_root().glob(f"**/{GGUF_SUBDIR}/*.gguf"), key=lambda path: -path.stat().st_mtime)
-    data = {"files": [_gguf_payload(path) for path in found]}
+    """Every GGUF in the output model directory, newest first."""
+    data = {"files": [_gguf_payload(path) for path in find_gguf_files()]}
 
     return make_api_response(data=data)
 
 
 def _gguf_payload(path: Path) -> dict[str, Any]:
     """Describe one produced GGUF file."""
-    model_id = _model_id_from_artefact(path)
+    model_id = model_id_from_gguf(path)
     return {
         "path": str(path),
         "name": path.name,
         "sizeOnDisk": path.stat().st_size,
         "modelId": model_id,
-        "quantType": _quant_type_from_gguf(path, model_id),
+        "quantType": split_gguf_stem(path.stem)[1],
     }
 
 
@@ -206,10 +215,10 @@ def api_settings() -> dict[str, Any]:
     return make_api_response(data=_settings_payload())
 
 
-@api.post("/settings")
+@api.post("/settings/directories/<kind>")
 @check_json_data
-def api_settings_save(json_data: dict[str, Any]) -> dict[str, Any] | tuple[dict[str, Any], int]:
-    """Store a new model directory; an empty one restores the default.
+def api_settings_directory(json_data: dict[str, Any], kind: str) -> dict[str, Any] | tuple[dict[str, Any], int]:
+    """Store a new model or output model directory; an empty path restores the default.
 
     Refused while a stage runs: it would write its first artefacts in one
     directory and its last in another.
@@ -217,15 +226,20 @@ def api_settings_save(json_data: dict[str, Any]) -> dict[str, Any] | tuple[dict[
     (result, message, data, status_code, reflect) = (True, "", {}, 200, True)
 
     job = current_app.extensions["llmft_jobs"].current
+    setting = DIRECTORIES.get(kind)
 
-    if job is not None and not job.finished:
+    if setting is None:
         result = False
-        message = f"A {job.kind} job is running. Change the model directory once it has finished."
+        message = f"There is no {kind!r} directory setting."
+        status_code = HTTP_NOT_FOUND
+    elif job is not None and not job.finished:
+        result = False
+        message = f"A {job.kind} job is running. Change the {setting.label.lower()} once it has finished."
         status_code = HTTP_CONFLICT
     else:
         try:
-            set_output_root(str(json_data.get("outputDir", "")))
-        except OutputDirError as error:
+            set_directory(setting, str(json_data.get("path", "")))
+        except DirectoryError as error:
             result = False
             message = str(error)
             status_code = HTTP_UNPROCESSABLE
@@ -265,7 +279,7 @@ def api_folders() -> dict[str, Any] | tuple[dict[str, Any], int]:
     (result, message, data, status_code, reflect) = (True, "", {}, 200, True)
 
     try:
-        listing = list_folder(request.args.get("path", "") or str(output_root()))
+        listing = list_folder(request.args.get("path", "") or str(model_root()))
     except FolderError as error:
         result = False
         message = str(error)
@@ -286,14 +300,17 @@ def _folders_payload(listing: FolderListing) -> dict[str, Any]:
     }
 
 
+def _directory_payload(setting: DirectorySetting) -> dict[str, Any]:
+    """Describe one directory setting for the Setup page."""
+    current = stored_directory(setting)
+    return {"path": str(current), "default": str(setting.default), "isDefault": current == setting.default}
+
+
 def _settings_payload() -> dict[str, Any]:
     """Describe the current settings for the Setup page."""
-    current = output_root()
     address = server_address()
     return {
-        "outputDir": str(current),
-        "defaultOutputDir": str(DEFAULT_OUT_DIR),
-        "isDefault": current == DEFAULT_OUT_DIR,
+        "directories": {kind: _directory_payload(setting) for kind, setting in DIRECTORIES.items()},
         "server": {
             "host": address.host,
             "port": address.port,
@@ -496,11 +513,23 @@ def api_jobs_train(json_data: dict[str, Any]) -> dict[str, Any] | tuple[dict[str
 @api.post("/jobs/quantize")
 @check_json_data
 def api_jobs_quantize(json_data: dict[str, Any]) -> dict[str, Any] | tuple[dict[str, Any], int]:
-    """Start a quantization of an already merged model."""
+    """Start a quantization of an already merged model.
+
+    The name is checked before the job starts, so a bad one is refused on the
+    form rather than reported as a failed stage.
+    """
     model_id = str(json_data.get("modelId", ""))
     quant_type = str(json_data.get("quantType", QuantSettings().quant_type))
+    name = str(json_data.get("name", "")).strip()
 
-    (result, message, data, status_code) = _start("quantize", lambda sink: quantize(model_id, quant_type, sink=sink))
+    try:
+        gguf_name = validated_gguf_name(name or model_name(model_id))
+    except (InvalidModelIdError, InvalidNameError) as error:
+        (result, message, data, status_code) = (False, str(error), {}, HTTP_UNPROCESSABLE)
+    else:
+        (result, message, data, status_code) = _start(
+            "quantize", lambda sink: quantize(model_id, quant_type, sink=sink, name=gguf_name)
+        )
 
     return make_api_response(result, message, data, status_code, True)
 
@@ -519,7 +548,7 @@ def api_jobs_deploy(json_data: dict[str, Any]) -> dict[str, Any] | tuple[dict[st
         status_code = HTTP_UNPROCESSABLE
     else:
         model_id = str(json_data.get("modelId", ""))
-        name = str(json_data.get("name", "")) or _default_name(gguf, model_id, str(json_data.get("quantType", "")))
+        name = str(json_data.get("name", "")) or name_for_gguf(gguf)
         work = (
             (lambda sink: deploy_to_ollama(gguf, name, sink=sink))
             if str(json_data.get("runner", "")) == "ollama"
@@ -640,25 +669,14 @@ def _settings_from(payload: dict[str, Any]) -> tuple[LoraSettings, SftSettings]:
     return LoraSettings(**lora), SftSettings(**dict(payload.get("sft") or {}))
 
 
-def _default_name(gguf: Path, model_id: str, quant_type: str) -> str:
-    """Propose a runner name, matching what the CLI would offer."""
-    return suggested_name(model_id, quant_type) if model_id and quant_type else ollama_name(gguf.stem)
-
-
 def _model_id_from_artefact(path: Path) -> str:
-    """Recover the model identifier from an artefact path under the output root."""
-    parts = path.relative_to(output_root()).parts
+    """Recover the model identifier from an artefact path under the model directory."""
+    parts = path.relative_to(model_root()).parts
     boundary = next(
-        (index for index, part in enumerate(parts) if part in {MERGED_SUBDIR, GGUF_SUBDIR, ADAPTER_SUBDIR}),
+        (index for index, part in enumerate(parts) if part in {MERGED_SUBDIR, ADAPTER_SUBDIR}),
         len(parts),
     )
     return "/".join(parts[:boundary])
-
-
-def _quant_type_from_gguf(path: Path, model_id: str) -> str:
-    """Read the quantization type back out of a produced filename."""
-    prefix = f"{model_name(model_id)}-" if model_id else ""
-    return path.stem[len(prefix):] if prefix and path.stem.startswith(prefix) else ""
 
 
 def _directory_size(path: Path) -> int:

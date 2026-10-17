@@ -343,6 +343,21 @@ def quant_type_info(name: str) -> QuantTypeInfo:
     return matches[0]
 
 
+def split_gguf_stem(stem: str) -> tuple[str, str]:
+    """Split a ``<name>-<type>`` GGUF stem into its name and quantization type.
+
+    The name is chosen by the user, so it cannot be used to find the type;
+    the type is recognised instead as a known suffix. A stem that ends in no
+    known type is returned whole, with an empty type.
+    """
+    found = max(
+        (name for name in QUANT_TYPE_NAMES if stem.endswith(f"-{name}") and len(stem) > len(name) + 1),
+        key=len,
+        default="",
+    )
+    return (stem[: -len(found) - 1], found) if found else (stem, "")
+
+
 def available_quant_types(has_llama_quantize: bool) -> tuple[QuantTypeInfo, ...]:
     """Return the quantization types usable right now.
 

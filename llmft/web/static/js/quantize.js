@@ -28,6 +28,30 @@ function handleTypeChange() {
     document.getElementById('type-explanation').textContent = chosen ? chosen.explanation : '';
 }
 
+/** The name the original model goes by, without its organisation. */
+function originalName(modelId) {
+    return modelId.split('/').pop();
+}
+
+/**
+ * Propose the selected model's own name as the quantized model's name.
+ */
+function handleModelChange() {
+    const modelId = document.getElementById('model-select').value;
+    document.getElementById('name-input').value = modelId ? originalName(modelId) : '';
+    handleNameChange();
+}
+
+/**
+ * Show the file the current name and type will produce.
+ */
+function handleNameChange() {
+    const modelId = document.getElementById('model-select').value;
+    const name = document.getElementById('name-input').value.trim() || (modelId ? originalName(modelId) : '');
+    const type = document.getElementById('type-select').value;
+    document.getElementById('name-preview').textContent = name && type ? `File: ${name}-${type}.gguf` : '';
+}
+
 /**
  * Load the merged models and the quantization types this machine supports.
  */
@@ -54,6 +78,7 @@ async function loadInputs() {
     fillSelect(typeSelect, quantTypes, (item) => item.name, (item) => item.label, 'No quantization type available');
     typeSelect.value = capabilities.data.defaultQuantType;
     handleTypeChange();
+    handleModelChange();
 
     document.getElementById('run-btn').disabled = models.length === 0;
 }
@@ -99,7 +124,11 @@ async function handleRun() {
 
     const job = await runJob(
         '/api/jobs/quantize',
-        { modelId, quantType: document.getElementById('type-select').value },
+        {
+            modelId,
+            quantType: document.getElementById('type-select').value,
+            name: document.getElementById('name-input').value.trim(),
+        },
         'Quantizing',
     );
 
@@ -112,7 +141,12 @@ async function handleRun() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('type-select').addEventListener('change', handleTypeChange);
+    document.getElementById('model-select').addEventListener('change', handleModelChange);
+    document.getElementById('type-select').addEventListener('change', () => {
+        handleTypeChange();
+        handleNameChange();
+    });
+    document.getElementById('name-input').addEventListener('input', handleNameChange);
     document.getElementById('run-btn').addEventListener('click', handleRun);
     loadInputs();
 });

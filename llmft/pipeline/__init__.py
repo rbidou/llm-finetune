@@ -25,6 +25,7 @@ from llmft.pipeline.deployment import (
     available_targets,
     deploy_to_lm_studio,
     deploy_to_ollama,
+    name_for_gguf,
     ollama_name,
     suggested_name,
 )
@@ -43,6 +44,7 @@ __all__ = [
     "deploy_to_lm_studio",
     "deploy_to_ollama",
     "merge",
+    "name_for_gguf",
     "ollama_name",
     "quantize",
     "suggested_name",

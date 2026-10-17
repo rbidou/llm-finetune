@@ -62,26 +62,32 @@ shown with a link to the Quantize page.</p>
 <h3 id="quantize">Quantize</h3>
 <p>Pick a merged model and an output type; the explanation of the selected type is
 shown beneath it. Types needing <code>llama-quantize</code> are absent from the list
-entirely when that binary is not installed. The finished file is reported with
-its size, and its path can be copied.</p>
+entirely when that binary is not installed. <strong>Model name</strong> is filled with the
+original model's name whenever you pick a model, and can be changed; the file it
+will produce is shown beneath it as you type. Left empty, the original name is
+used. The finished file is reported with its size, and its path can be copied.</p>
 <h3 id="deploy">Deploy</h3>
 <p>Pick a GGUF and a runner. Only installed runners appear. A name for Ollama is
-proposed from the model and its quantization; you can change it. When the
+proposed from the file's model name and quantization, so a model renamed when it
+was quantized keeps that name; you can change it. When the
 deployment finishes, the command that runs the model is shown ready to copy.</p>
 <h3 id="environment">Environment</h3>
 <p>The same report as <code>python run.py check</code>: the card and its memory as headline
 figures, then every operation, whether it is available, and the reason when it
 is not. Deployment targets are listed the same way.</p>
 <h3 id="setup">Setup</h3>
-<p>The model directory, with the default it falls back to. Type a path and press
-Save, or press <strong>Browse…</strong> to pick a folder: the browser opens on the current
-directory, a click on a folder opens it, <strong>Up</strong> returns to its parent and the
-drive list switches drive. <strong>Use this folder</strong> saves the folder on screen. To use
-a folder that does not exist yet, browse to its parent, then type the new name
-at the end of the path and press Save. The directory is created if needed and
-must be writable, otherwise the reason is shown in place. <strong>Restore the default</strong> returns to <code>out/</code>. The directory cannot be
-changed while a stage is running, since that stage would otherwise write its
-first artefacts in one place and its last in another.</p>
+<p>Two panels set the two directories: <strong>Model directory</strong> for checkpoints,
+adapters and merged models, and <strong>Output model directory</strong> for quantized GGUF
+files. Each shows the default it falls back to. Type a path and press Save, or
+press <strong>Browse…</strong> to pick a folder: the browser opens inside that panel on the
+current directory, a click on a folder opens it, <strong>Up</strong> returns to its parent
+and the drive list switches drive. <strong>Use this folder</strong> saves the folder on
+screen. To use a folder that does not exist yet, browse to its parent, then type
+the new name at the end of the path and press Save. The directory is created if
+needed and must be writable, otherwise the reason is shown in place. <strong>Restore
+the default</strong> returns that panel to its default. Neither directory can be changed
+while a stage is running, since that stage would otherwise write its first
+artefacts in one place and its last in another.</p>
 <p>The <strong>Web server</strong> panel sets the IP address and port <code>python run.py web</code>
 listens on, 127.0.0.1:5000 by default. The address must be an IP address of
 this machine: 127.0.0.1 keeps the interface on this computer, 0.0.0.0 listens on

@@ -1,15 +1,34 @@
 /* LLM Finetune - Setup */
 
 /**
+ * The section of the page that edits one directory setting.
+ * @param {string} kind - the directory key, as the API names it
+ * @returns {HTMLElement}
+ */
+function directoryPanel(kind) {
+    return document.querySelector(`.directory-panel[data-kind="${kind}"]`);
+}
+
+/**
  * Show the stored settings in the form.
  * @param {object} settings - the settings payload from the API
  */
 function renderSettings(settings) {
-    document.getElementById('output-dir-input').value = settings.outputDir;
-    document.getElementById('default-hint').textContent = `Default: ${settings.defaultOutputDir}`;
-    document.getElementById('default-badge').style.display = settings.isDefault ? '' : 'none';
-    document.getElementById('reset-btn').disabled = settings.isDefault;
+    Object.entries(settings.directories).forEach(([kind, directory]) => renderDirectory(kind, directory));
     renderServer(settings.server);
+}
+
+/**
+ * Show one stored directory in its section.
+ * @param {string} kind
+ * @param {object} directory - path, default and isDefault
+ */
+function renderDirectory(kind, directory) {
+    const panel = directoryPanel(kind);
+    panel.querySelector('.directory-input').value = directory.path;
+    panel.querySelector('.directory-default-hint').textContent = `Default: ${directory.default}`;
+    panel.querySelector('.directory-default-badge').style.display = directory.isDefault ? '' : 'none';
+    panel.querySelector('.directory-reset-btn').disabled = directory.isDefault;
 }
 
 /**
@@ -39,32 +58,34 @@ async function loadSettings() {
 }
 
 /**
- * Store a model directory; an empty value restores the default.
- * @param {string} outputDir
+ * Store one directory; an empty path restores its default.
+ * @param {string} kind
+ * @param {string} path
  */
-async function saveOutputDir(outputDir) {
-    const response = await apiFetch('/api/settings', { method: 'POST', body: { outputDir } });
+async function saveDirectory(kind, path) {
+    const response = await apiFetch(`/api/settings/directories/${kind}`, { method: 'POST', body: { path } });
 
     if (!response.status) {
-        showError(response.message || 'The model directory could not be changed.');
+        showError(response.message || 'The directory could not be changed.');
         return;
     }
     showSection('none');
     renderSettings(response.data);
-    notify(`Models will be written under ${response.data.outputDir}`, 'success');
+    notify(`Saved: ${response.data.directories[kind].path}`, 'success');
 }
 
 /**
- * Handle the save button click.
+ * Handle a directory section's save button.
+ * @param {string} kind
  */
-function handleSave() {
-    const value = document.getElementById('output-dir-input').value.trim();
+function handleDirectorySave(kind) {
+    const value = directoryPanel(kind).querySelector('.directory-input').value.trim();
 
     if (!value) {
         notify('Enter a directory, or restore the default', 'error');
         return;
     }
-    saveOutputDir(value);
+    saveDirectory(kind, value);
 }
 
 /**
@@ -98,6 +119,9 @@ function handleServerSave() {
 
 /** The folder the browser is showing, as last listed by the server. */
 let browsed = null;
+
+/** The directory section the browser was opened from. */
+let browsingFor = '';
 
 /**
  * List one folder and show its subfolders.
@@ -145,11 +169,17 @@ function renderBrowser(listing) {
 }
 
 /**
- * Open the browser on whatever the field currently holds.
+ * Open the browser inside one directory section, on what its field holds.
+ * @param {string} kind
  */
-function handleBrowse() {
-    document.getElementById('browser').style.display = '';
-    browseTo(document.getElementById('output-dir-input').value.trim());
+function handleBrowse(kind) {
+    const panel = directoryPanel(kind);
+    const browser = document.getElementById('browser');
+
+    browsingFor = kind;
+    panel.querySelector('.panel-body').insertBefore(browser, panel.querySelector('.directory-actions'));
+    browser.style.display = '';
+    browseTo(panel.querySelector('.directory-input').value.trim());
 }
 
 /**
@@ -160,26 +190,36 @@ function closeBrowser() {
 }
 
 /**
- * Put the browsed folder in the field and store it.
+ * Put the browsed folder in the field it was opened for, and store it.
  */
 function handleChoose() {
-    if (!browsed) return;
-    document.getElementById('output-dir-input').value = browsed.path;
+    if (!browsed || !browsingFor) return;
+    directoryPanel(browsingFor).querySelector('.directory-input').value = browsed.path;
     closeBrowser();
-    saveOutputDir(browsed.path);
+    saveDirectory(browsingFor, browsed.path);
+}
+
+/**
+ * Wire one directory section's controls.
+ * @param {HTMLElement} panel
+ */
+function initDirectoryPanel(panel) {
+    const { kind } = panel.dataset;
+
+    panel.querySelector('.directory-browse-btn').addEventListener('click', () => handleBrowse(kind));
+    panel.querySelector('.directory-save-btn').addEventListener('click', () => handleDirectorySave(kind));
+    panel.querySelector('.directory-reset-btn').addEventListener('click', () => saveDirectory(kind, ''));
+    panel.querySelector('.directory-input').addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') handleDirectorySave(kind);
+    });
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('browse-btn').addEventListener('click', handleBrowse);
+    document.querySelectorAll('.directory-panel').forEach(initDirectoryPanel);
     document.getElementById('up-btn').addEventListener('click', () => browsed && browseTo(browsed.parent));
     document.getElementById('root-select').addEventListener('change', (event) => browseTo(event.target.value));
     document.getElementById('choose-btn').addEventListener('click', handleChoose);
     document.getElementById('cancel-btn').addEventListener('click', closeBrowser);
-    document.getElementById('save-btn').addEventListener('click', handleSave);
-    document.getElementById('reset-btn').addEventListener('click', () => saveOutputDir(''));
-    document.getElementById('output-dir-input').addEventListener('keydown', (event) => {
-        if (event.key === 'Enter') handleSave();
-    });
     document.getElementById('server-save-btn').addEventListener('click', handleServerSave);
     document.getElementById('server-reset-btn').addEventListener('click', () => saveServerAddress('', ''));
     ['host-input', 'port-input'].forEach((id) => {

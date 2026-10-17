@@ -77,20 +77,27 @@ Table: Where artefacts are written
 
 | Path | Contents |
 |---|---|
-| `out/<model_id>/final_adapter/` | The trained LoRA adapter |
-| `out/<model_id>/merged_model/` | Adapter merged into the base weights |
-| `out/<model_id>/gguf/` | One GGUF file per quantization type |
+| `<model directory>/<model_id>/final_adapter/` | The trained LoRA adapter, and the training checkpoints beside it |
+| `<model directory>/<model_id>/merged_model/` | Adapter merged into the base weights |
+| `<output model directory>/<model_id>/` | One GGUF file per quantization type |
 | `configs/` | Saved parameter presets |
 | `tools/` | llama.cpp, when installed here |
 
 Model identifiers keep their `organisation/name` shape, so artefacts group
 naturally by publisher.
 
-`out/` is the default model directory. It can be moved — to a larger disk, say —
-from the Setup menu in either interface; the choice is stored in `settings.json`
-in the application directory and applies to the CLI and the browser alike.
-Changing it does not move artefacts already written: they stay where they are,
-and the Quantize and Deploy lists only show what is under the current directory.
+Two directories are involved. The **model directory**, `out/` by default, holds
+the working artefacts only this application needs. The **output model
+directory**, `D:\Models\ParaCyberBellum` by default on Windows and
+`~/Models/ParaCyberBellum` elsewhere, holds the finished GGUF files you hand to a
+model runner. Either can be moved — to a larger disk, say — from the Setup menu
+in either interface; the choice is stored in `settings.json` in the application
+directory and applies to the CLI and the browser alike. Changing one does not
+move what is already written: the Quantize list only shows merged models under
+the current model directory, and the Deploy list only shows GGUF files under the
+current output model directory. If the default output drive does not exist on
+this machine, quantizing stops with a message asking you to choose another
+directory in Setup.
 
 ## CLI usage
 
@@ -124,19 +131,24 @@ so loading one cannot quietly decide which model you are fine-tuning.
 ### Quantizing and deploying
 
 Both stand alone. Quantizing lists every merged model you have; deploying lists
-every GGUF. Producing a k-quant writes an intermediate f16 file, which is kept
-because f16 is itself a valid output and a later k-quant of the same model then
-reuses it instead of converting again.
+every GGUF. After the type, quantizing asks for the model name, proposing the
+original model's name: it names the file, `<name>-<type>.gguf`, and is recorded
+inside it as the model's name. A name may use letters, digits, `.`, `-` and `_`;
+anything else is refused and asked for again. Producing a k-quant writes an
+intermediate f16 file under the same name, which is kept because f16 is itself a
+valid output and a later k-quant under that name then reuses it instead of
+converting again.
 
 ### Setup
 
-Shows the model directory — where checkpoints, adapters, merged models and GGUF
-files are written. **Change the model directory** asks for a path, absolute or
-relative to the application directory; it is created if needed and checked for
-write access before it is accepted, so an unusable choice is refused at once
-rather than at the end of a training run. Tab completes folder names as you
-type. **Restore the default** returns to
-`out/`.
+Shows both directories: the model directory, where checkpoints, adapters and
+merged models are written, and the output model directory, where quantized GGUF
+files are written. **Change the model directory** and **Change the output model
+directory** each ask for a path, absolute or relative to the application
+directory; it is created if needed and checked for write access before it is
+accepted, so an unusable choice is refused at once rather than at the end of a
+training run. Tab completes folder names as you type. Each has its own
+**Restore the default** option.
 
 It also shows the web server address. **Change the web server address** asks for
 the listening IP address and the port; **Restore the default address** returns
@@ -197,13 +209,16 @@ shown with a link to the Quantize page.
 
 Pick a merged model and an output type; the explanation of the selected type is
 shown beneath it. Types needing `llama-quantize` are absent from the list
-entirely when that binary is not installed. The finished file is reported with
-its size, and its path can be copied.
+entirely when that binary is not installed. **Model name** is filled with the
+original model's name whenever you pick a model, and can be changed; the file it
+will produce is shown beneath it as you type. Left empty, the original name is
+used. The finished file is reported with its size, and its path can be copied.
 
 ### Deploy
 
 Pick a GGUF and a runner. Only installed runners appear. A name for Ollama is
-proposed from the model and its quantization; you can change it. When the
+proposed from the file's model name and quantization, so a model renamed when it
+was quantized keeps that name; you can change it. When the
 deployment finishes, the command that runs the model is shown ready to copy.
 
 ### Environment
@@ -214,15 +229,18 @@ is not. Deployment targets are listed the same way.
 
 ### Setup
 
-The model directory, with the default it falls back to. Type a path and press
-Save, or press **Browse…** to pick a folder: the browser opens on the current
-directory, a click on a folder opens it, **Up** returns to its parent and the
-drive list switches drive. **Use this folder** saves the folder on screen. To use
-a folder that does not exist yet, browse to its parent, then type the new name
-at the end of the path and press Save. The directory is created if needed and
-must be writable, otherwise the reason is shown in place. **Restore the default** returns to `out/`. The directory cannot be
-changed while a stage is running, since that stage would otherwise write its
-first artefacts in one place and its last in another.
+Two panels set the two directories: **Model directory** for checkpoints,
+adapters and merged models, and **Output model directory** for quantized GGUF
+files. Each shows the default it falls back to. Type a path and press Save, or
+press **Browse…** to pick a folder: the browser opens inside that panel on the
+current directory, a click on a folder opens it, **Up** returns to its parent
+and the drive list switches drive. **Use this folder** saves the folder on
+screen. To use a folder that does not exist yet, browse to its parent, then type
+the new name at the end of the path and press Save. The directory is created if
+needed and must be writable, otherwise the reason is shown in place. **Restore
+the default** returns that panel to its default. Neither directory can be changed
+while a stage is running, since that stage would otherwise write its first
+artefacts in one place and its last in another.
 
 The **Web server** panel sets the IP address and port `python run.py web`
 listens on, 127.0.0.1:5000 by default. The address must be an IP address of
