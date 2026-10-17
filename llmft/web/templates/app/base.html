@@ -7,47 +7,48 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
     {% block head %}{% endblock %}
 </head>
+{#- The menu, defined once: it builds the sidebar links and the breadcrumb of
+    the compact layout, so the two can never disagree. -#}
+{%- set menu = [
+    {'slug': 'fine-tune',     'endpoint': 'page_finetune',      'icon': '&#9654;',   'label': 'Fine-tune'},
+    {'slug': 'quantize',      'endpoint': 'page_quantize',      'icon': '&#9733;',   'label': 'Quantize'},
+    {'slug': 'deploy',        'endpoint': 'page_deploy',        'icon': '&#9673;',   'label': 'Deploy'},
+    {'slug': 'environment',   'endpoint': 'page_environment',   'icon': '&#9881;',   'label': 'Environment'},
+    {'slug': 'setup',         'endpoint': 'page_setup',         'icon': '&#9998;',   'label': 'Setup'},
+    {'slug': 'documentation', 'endpoint': 'page_documentation', 'icon': '&#128196;', 'label': 'Documentation'},
+] -%}
+{#- A flat menu has no sections, so the breadcrumb is the page alone -#}
+{%- set crumb = namespace(text='') -%}
+{%- for item in menu if item.slug == active_page -%}
+    {%- set crumb.text = item.label -%}
+{%- endfor -%}
 <body>
+    {# Compact layout (< 1400px): top bar with the menu toggle; the sidebar becomes a drawer #}
+    <header class="topbar">
+        <button type="button" class="topbar-toggle" id="nav-toggle" aria-controls="sidebar"
+                aria-expanded="false" aria-label="Open the menu" title="Menu">&#9776;</button>
+        <span class="topbar-brand">LLM Finetune</span>
+        <span class="topbar-crumb">{{ crumb.text }}</span>
+    </header>
+    <div class="nav-backdrop" id="nav-backdrop"></div>
+
     {# The brand points at this application's own first page: LLM Finetune is a
        self-contained console, not one tool inside a portal, so there is no
        parent site to open in a second tab. #}
-    <nav class="sidebar">
+    <nav class="sidebar" id="sidebar">
         <div class="sidebar-brand">
             <h1><a href="{{ url_for('page_finetune') }}">LLM Finetune</a></h1>
             <div class="subtitle">QLoRA Fine-Tuning</div>
         </div>
 
         <div class="sidebar-nav">
-            <a href="{{ url_for('page_finetune') }}"
-               class="{% if active_page == 'fine-tune' %}active{% endif %}">
-                <span class="nav-icon">&#9654;</span>
-                <span class="nav-label">Fine-tune</span>
+            {%- for item in menu %}
+            <a href="{{ url_for(item.endpoint) }}"
+               class="{% if active_page == item.slug %}active{% endif %}">
+                <span class="nav-icon">{{ item.icon | safe }}</span>
+                <span class="nav-label">{{ item.label }}</span>
             </a>
-            <a href="{{ url_for('page_quantize') }}"
-               class="{% if active_page == 'quantize' %}active{% endif %}">
-                <span class="nav-icon">&#9733;</span>
-                <span class="nav-label">Quantize</span>
-            </a>
-            <a href="{{ url_for('page_deploy') }}"
-               class="{% if active_page == 'deploy' %}active{% endif %}">
-                <span class="nav-icon">&#9673;</span>
-                <span class="nav-label">Deploy</span>
-            </a>
-            <a href="{{ url_for('page_environment') }}"
-               class="{% if active_page == 'environment' %}active{% endif %}">
-                <span class="nav-icon">&#9881;</span>
-                <span class="nav-label">Environment</span>
-            </a>
-            <a href="{{ url_for('page_setup') }}"
-               class="{% if active_page == 'setup' %}active{% endif %}">
-                <span class="nav-icon">&#9998;</span>
-                <span class="nav-label">Setup</span>
-            </a>
-            <a href="{{ url_for('page_documentation') }}"
-               class="{% if active_page == 'documentation' %}active{% endif %}">
-                <span class="nav-icon">&#128196;</span>
-                <span class="nav-label">Documentation</span>
-            </a>
+            {%- endfor %}
         </div>
 
         {# Global state, not a property of any one page: which card is present

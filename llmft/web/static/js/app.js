@@ -262,6 +262,47 @@ async function runJob(url, payload, title) {
     return job;
 }
 
+/**
+ * Open or close the drawer menu of the compact layout.
+ * @param {boolean} open
+ * @param {boolean} restoreFocus - give the focus back to the toggle when closing
+ */
+function setNavOpen(open, restoreFocus = true) {
+    const toggle = document.getElementById('nav-toggle');
+    const wasOpen = document.body.classList.contains('nav-open');
+    document.body.classList.toggle('nav-open', open);
+    toggle.setAttribute('aria-expanded', String(open));
+    toggle.setAttribute('aria-label', open ? 'Close the menu' : 'Open the menu');
+    if (open) {
+        const first = document.querySelector('#sidebar .sidebar-nav a');
+        if (first) setTimeout(() => first.focus(), 50);
+    } else if (wasOpen && restoreFocus) {
+        toggle.focus();
+    }
+}
+
+/**
+ * Wire the drawer menu of the compact layout (< 1400px): toggle button, backdrop, Esc,
+ * closing on navigation and when the window becomes wide again.
+ */
+function initNavDrawer() {
+    const toggle = document.getElementById('nav-toggle');
+    if (!toggle) return;
+    toggle.addEventListener('click', () => setNavOpen(!document.body.classList.contains('nav-open')));
+    document.getElementById('nav-backdrop').addEventListener('click', () => setNavOpen(false));
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && document.body.classList.contains('nav-open')) setNavOpen(false);
+    });
+    document.querySelectorAll('#sidebar a').forEach(link => {
+        link.addEventListener('click', () => setNavOpen(false, false));
+    });
+    // Same breakpoint as the compact layout in app.css
+    window.matchMedia('(min-width: 1400px)').addEventListener('change', (e) => {
+        if (e.matches) setNavOpen(false, false);
+    });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     initSidebarStatus();
+    initNavDrawer();
 });

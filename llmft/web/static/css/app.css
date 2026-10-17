@@ -28,6 +28,7 @@
     --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
 
     --sidebar-width: 240px;
+    --topbar-height: 44px;    /* compact layout top bar */
 
     /* Native controls, scrollbars and the file picker follow the theme too. */
     color-scheme: dark;
@@ -1145,30 +1146,93 @@ details.panel[open] > summary.panel-header .step-chevron { transform: rotate(90d
     padding: 0 2px;
 }
 
-/* ---------- Responsive ---------- */
-@media (max-width: 768px) {
-    .sidebar { width: 60px; }
+/* ---------- Responsive: compact layout (< 1400px) ---------- */
+/* The panels use the full width; a top bar holds the menu toggle and the page
+   breadcrumb; the sidebar slides in as a drawer over the content (static/js/app.js). */
+.topbar,
+.nav-backdrop { display: none; }
 
-    .sidebar-brand h1,
-    .sidebar-brand .subtitle,
-    .sidebar-nav .nav-label,
-    .sidebar-status {
-        display: none;
+@media (max-width: 1399.98px) {
+    /* In-page anchors (the manual's contents) must not land under the top bar */
+    html { scroll-padding-top: var(--topbar-height); }
+
+    .topbar {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: var(--topbar-height);
+        padding: 0 16px;
+        background: var(--bg-secondary);
+        border-bottom: 1px solid var(--border);
+        z-index: 90;
     }
 
-    .sidebar-brand { padding: 20px 0; text-align: center; }
-
-    .sidebar-nav a {
-        justify-content: center;
-        padding: 12px;
+    .topbar-toggle {
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        color: var(--text-primary);
+        font-size: 20px;
+        line-height: 1;
+        padding: 4px 10px;
+        cursor: pointer;
+        transition: all 0.15s;
     }
 
-    .sidebar-footer { display: none; }
+    .topbar-toggle:hover { background: var(--bg-tertiary); }
+    .topbar-toggle:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-dim); }
+
+    .topbar-brand {
+        color: var(--accent);
+        font-weight: 700;
+        font-size: 15px;
+        letter-spacing: 0.5px;
+        white-space: nowrap;
+    }
+
+    .topbar-crumb {
+        color: var(--text-secondary);
+        font-size: 13px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* Drawer: off-canvas and out of the tab order when closed */
+    .sidebar {
+        transform: translateX(-100%);
+        visibility: hidden;
+        transition: transform 0.25s ease, visibility 0s linear 0.25s;
+    }
+
+    body.nav-open .sidebar {
+        transform: translateX(0);
+        visibility: visible;
+        transition: transform 0.25s ease;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    }
+
+    body.nav-open .nav-backdrop {
+        display: block;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 95;
+    }
 
     .main-content {
-        margin-left: 60px;
-        padding: 20px;
+        margin-left: 0;
+        padding: calc(var(--topbar-height) + 24px) 24px 24px;
     }
+}
+
+@media (max-width: 768px) {
+    .main-content { padding: calc(var(--topbar-height) + 16px) 16px 16px; }
+    .topbar-brand { display: none; }
 
     .params-grid { grid-template-columns: 1fr; }
 }
